@@ -11,71 +11,104 @@ class AdminScreen extends StatefulWidget {
 }
 
 class _AdminScreenState extends State<AdminScreen> {
-  int _selectedMenuIndex = 0; // 0 = Gestion membres, 1 = Configuration
+  int _selectedMenuIndex = 0;
+
+  final Color primaryDark = const Color(0xFF1E293B);
+  final Color accentCyan = const Color(0xFF00AEEF);
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFFF8FAFF),
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0163D2),
+        elevation: 0,
+        backgroundColor: Colors.white,
+        iconTheme: IconThemeData(color: primaryDark),
+        centerTitle: true,
         title: Text(
           _selectedMenuIndex == 0 ? 'Gestion des membres' : 'Configuration',
-          style: const TextStyle(color: Colors.white),
+          style: TextStyle(
+            color: primaryDark,
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+          ),
         ),
-        iconTheme: const IconThemeData(color: Colors.white),
-        // Le bouton menu (hamburger) sera automatiquement ajouté par Flutter
+        // --- BOUTON DECONNEXION DANS L'APPBAR ---
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.power_settings_new, color: Colors.redAccent),
+            onPressed: () => Navigator.pop(context), // Retour au login
+          ),
+          const SizedBox(width: 8),
+        ],
       ),
-      // ✅ Drawer = Menu coulissant
       drawer: Drawer(
-        child: Container(
-          color: Colors.white,
-          child: Column(
-            children: [
-              // En-tête du drawer
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 20),
-                color: const Color(0xFF0163D2),
-                child: const Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(Icons.admin_panel_settings, color: Colors.white, size: 50),
-                    SizedBox(height: 10),
-                    Text(
-                      'Administration',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
+        child: Column(
+          children: [
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 50, horizontal: 20),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [primaryDark, const Color(0xFF334155)],
                 ),
               ),
-              
-              const SizedBox(height: 10),
-              
-              // Menu items
-              _buildMenuItem(
-                icon: Icons.people,
-                title: 'Gestion membres',
-                index: 0,
+              child: const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    Icons.admin_panel_settings,
+                    color: Color(0xFF00AEEF),
+                    size: 50,
+                  ),
+                  SizedBox(height: 10),
+                  Text(
+                    'Administration',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
               ),
-              _buildMenuItem(
-                icon: Icons.settings,
-                title: 'Configuration',
-                index: 1,
+            ),
+            const SizedBox(height: 10),
+            _buildMenuItem(
+              icon: Icons.people_alt_rounded,
+              title: 'Gestion membres',
+              index: 0,
+            ),
+            _buildMenuItem(
+              icon: Icons.settings_rounded,
+              title: 'Configuration',
+              index: 1,
+            ),
+
+            const Spacer(), // Pousse le bouton vers le bas
+            // --- BOUTON DECONNEXION DANS LE MENU ---
+            const Divider(),
+            ListTile(
+              leading: const Icon(Icons.logout, color: Colors.redAccent),
+              title: const Text(
+                'Déconnexion',
+                style: TextStyle(
+                  color: Colors.redAccent,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
-            ],
-          ),
+              onTap: () {
+                Navigator.pop(context); // Ferme le menu
+                Navigator.pop(context); // Quitte l'écran admin
+              },
+            ),
+            const SizedBox(height: 20),
+          ],
         ),
       ),
       body: IndexedStack(
         index: _selectedMenuIndex,
-        children: const [
-          GestionMembresScreen(),
-          ConfigurationScreen(),
-        ],
+        children: const [GestionMembresScreen(), ConfigurationScreen()],
       ),
     );
   }
@@ -86,27 +119,21 @@ class _AdminScreenState extends State<AdminScreen> {
     required int index,
   }) {
     final isSelected = _selectedMenuIndex == index;
-    
+
     return ListTile(
-      leading: Icon(
-        icon,
-        color: isSelected ? const Color(0xFF0163D2) : Colors.grey[700],
-        size: 24,
-      ),
+      leading: Icon(icon, color: isSelected ? accentCyan : Colors.grey[600]),
       title: Text(
         title,
         style: TextStyle(
-          color: isSelected ? const Color(0xFF0163D2) : Colors.grey[700],
+          color: isSelected ? primaryDark : Colors.grey[700],
           fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-          fontSize: 16,
         ),
       ),
-      tileColor: isSelected ? const Color(0xFF0163D2).withOpacity(0.1) : Colors.transparent,
+      tileColor: isSelected ? accentCyan.withOpacity(0.08) : Colors.transparent,
       onTap: () {
         setState(() {
           _selectedMenuIndex = index;
         });
-        // Fermer le drawer après la sélection
         Navigator.pop(context);
       },
     );

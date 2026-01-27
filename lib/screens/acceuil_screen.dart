@@ -14,9 +14,10 @@ class AcceuilScreen extends StatefulWidget {
 
 class _AcceuilScreenState extends State<AcceuilScreen> {
   String? _appLogoPath;
-  String _companyName = "CORE LEDGER"; // 🔥 Valeur par défaut
-  String _companySlogan = "Une solution globale de gestion pour piloter vos actifs avec une précision absolue."; // 🔥 Valeur par défaut
-  
+  String _companyName = "CORE LEDGER";
+  String _companySlogan =
+      "Une solution globale de gestion pour piloter vos actifs avec une précision absolue.";
+
   int _unreadAnnouncementsCount = 0;
   final AnnouncementService _announcementService = AnnouncementService();
   int _lastReadCount = 0;
@@ -25,11 +26,9 @@ class _AcceuilScreenState extends State<AcceuilScreen> {
   void initState() {
     super.initState();
     _loadLogo();
-    _loadCompanyInfo(); // 🔥 Charger les infos de la compagnie
+    _loadCompanyInfo();
     _loadLastReadCount();
-    
     _announcementService.startListening();
-    
     _announcementService.announcementsStream.listen((announcements) {
       _updateUnreadCount(announcements.length);
     });
@@ -43,25 +42,22 @@ class _AcceuilScreenState extends State<AcceuilScreen> {
 
   Future<void> _loadLogo() async {
     final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      _appLogoPath = prefs.getString('app_logo_path');
-    });
+    setState(() => _appLogoPath = prefs.getString('app_logo_path'));
   }
 
-  // 🔥 Charger le nom et le slogan de la compagnie
   Future<void> _loadCompanyInfo() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
       _companyName = prefs.getString('company_name') ?? "CORE LEDGER";
-      _companySlogan = prefs.getString('company_slogan') ?? 
-          "Une solution globale de gestion pour piloter vos actifs avec une précision absolue.";
+      _companySlogan =
+          prefs.getString('company_slogan') ??
+          "Une solution globale de gestion...";
     });
   }
 
   Future<void> _loadLastReadCount() async {
     final prefs = await SharedPreferences.getInstance();
     _lastReadCount = prefs.getInt('last_read_announcements_count') ?? 0;
-    
     final announcements = prefs.getStringList('announcements') ?? [];
     _updateUnreadCount(announcements.length);
   }
@@ -76,23 +72,19 @@ class _AcceuilScreenState extends State<AcceuilScreen> {
   Future<void> _showAnnouncements() async {
     final prefs = await SharedPreferences.getInstance();
     final announcements = prefs.getStringList('announcements') ?? [];
-    
     await prefs.setInt('last_read_announcements_count', announcements.length);
     _lastReadCount = announcements.length;
-    setState(() {
-      _unreadAnnouncementsCount = 0;
-    });
-    
+    setState(() => _unreadAnnouncementsCount = 0);
+
     if (!mounted) return;
-    
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Row(
+        title: const Row(
           children: [
-            const Icon(Icons.campaign, color: Color(0xFF0163D2)),
-            const SizedBox(width: 10),
-            const Text('Annonces'),
+            Icon(Icons.campaign, color: Color(0xFF0163D2)),
+            SizedBox(width: 10),
+            Text('Annonces'),
           ],
         ),
         content: SizedBox(
@@ -101,98 +93,21 @@ class _AcceuilScreenState extends State<AcceuilScreen> {
           child: StreamBuilder<List<Map<String, dynamic>>>(
             stream: _announcementService.announcementsStream,
             builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
+              if (snapshot.connectionState == ConnectionState.waiting)
                 return const Center(child: CircularProgressIndicator());
-              }
-
               final announcements = snapshot.data ?? [];
-
-              if (announcements.isEmpty) {
-                return const Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.notifications_off_outlined,
-                        size: 60,
-                        color: Colors.grey,
-                      ),
-                      SizedBox(height: 15),
-                      Text(
-                        'Aucune annonce pour le moment',
-                        style: TextStyle(color: Colors.grey),
-                      ),
-                    ],
-                  ),
-                );
-              }
-
               return ListView.builder(
                 itemCount: announcements.length,
-                itemBuilder: (context, index) {
-                  final announcement = announcements[index];
-                  
-                  return Card(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    elevation: 2,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(15),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(8),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF0163D2).withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: const Icon(
-                                  Icons.campaign,
-                                  color: Color(0xFF0163D2),
-                                  size: 20,
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Text(
-                                  announcement['timestamp'],
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.grey[600],
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          Text(
-                            announcement['message'],
-                            style: const TextStyle(
-                              fontSize: 14,
-                              height: 1.5,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                },
+                itemBuilder: (context, index) => Card(
+                  child: ListTile(
+                    title: Text(announcements[index]['timestamp']),
+                    subtitle: Text(announcements[index]['message']),
+                  ),
+                ),
               );
             },
           ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Fermer'),
-          ),
-        ],
       ),
     );
   }
@@ -201,25 +116,26 @@ class _AcceuilScreenState extends State<AcceuilScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFFFFFFF),
+      appBar: AppBar(
+        backgroundColor: const Color(0xFF0163D2),
+        elevation: 0,
+        centerTitle: true,
+        title: const Text(
+          "ACCUEIL",
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        ),
+      ),
+
+      // 🔥 AJOUT : AppBar pour garantir qu'elle reste visible au logout
       body: Stack(
         children: [
           _buildBackgroundAura(),
-          
-          SafeArea(
-            child: Positioned(
-              top: 20,
-              right: 20,
-              child: _buildNotificationButton(),
-            ),
-          ),
-          
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 40.0),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  const SizedBox(height: 80),
+                  const SizedBox(height: 50),
                   _buildGlobalBranding(),
                   const Spacer(),
                   _buildVisualElement(),
@@ -240,201 +156,32 @@ class _AcceuilScreenState extends State<AcceuilScreen> {
   Widget _buildNotificationButton() {
     return GestureDetector(
       onTap: _showAnnouncements,
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          shape: BoxShape.circle,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.1),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Stack(
-          clipBehavior: Clip.none,
-          children: [
-            const Icon(
-              Icons.notifications_outlined,
-              color: Color(0xFF1E293B),
-              size: 24,
-            ),
-            if (_unreadAnnouncementsCount > 0)
-              Positioned(
-                top: -4,
-                right: -4,
-                child: Container(
-                  padding: const EdgeInsets.all(4),
-                  decoration: const BoxDecoration(
-                    color: Colors.red,
-                    shape: BoxShape.circle,
-                  ),
-                  constraints: const BoxConstraints(
-                    minWidth: 20,
-                    minHeight: 20,
-                  ),
-                  child: Center(
-                    child: Text(
-                      _unreadAnnouncementsCount > 99 
-                          ? '99+' 
-                          : '$_unreadAnnouncementsCount',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildBackgroundAura() {
-    return Positioned(
-      top: -150,
-      right: -100,
-      child: Container(
-        width: 400,
-        height: 400,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: RadialGradient(
-            colors: [
-              const Color(0xFF00AEEF).withOpacity(0.08),
-              Colors.transparent,
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildGlobalBranding() {
-    return Column(
-      children: [
-        Container(
-          height: 60,
-          width: 60,
-          decoration: BoxDecoration(
-            color: const Color(0xFF1E293B),
-            borderRadius: BorderRadius.circular(18),
-            boxShadow: [
-              BoxShadow(
-                color: const Color(0xFF1E293B).withOpacity(0.2),
-                blurRadius: 20,
-                offset: const Offset(0, 10),
-              ),
-            ],
-          ),
-          child: const Icon(
-            Icons.account_balance_rounded,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          const Icon(
+            Icons.notifications_outlined,
             color: Colors.white,
-            size: 30,
+            size: 28,
           ),
-        ),
-        const SizedBox(height: 15),
-        // 🔥 Nom dynamique de la compagnie
-        Text(
-          _companyName.toUpperCase(),
-          style: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w800,
-            color: Color(0xFF1E293B),
-            letterSpacing: 3,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildVisualElement() {
-    if (_appLogoPath != null && _appLogoPath!.isNotEmpty) {
-      return Container(
-        width: 130,
-        height: 130,
-        decoration: BoxDecoration(
-          color: const Color(0xFFF8FAFF),
-          shape: BoxShape.circle,
-          border: Border.all(
-            color: const Color(0xFF00AEEF).withOpacity(0.1),
-            width: 2,
-          ),
-        ),
-        child: ClipOval(
-          child: Image.file(
-            File(_appLogoPath!),
-            fit: BoxFit.cover,
-            errorBuilder: (context, error, stackTrace) {
-              return Padding(
-                padding: const EdgeInsets.all(25),
-                child: const Icon(
-                  Icons.analytics_outlined,
-                  size: 80,
-                  color: Color(0xFF00AEEF),
+          if (_unreadAnnouncementsCount > 0)
+            Positioned(
+              top: 10,
+              right: 0,
+              child: Container(
+                padding: const EdgeInsets.all(4),
+                decoration: const BoxDecoration(
+                  color: Colors.red,
+                  shape: BoxShape.circle,
                 ),
-              );
-            },
-          ),
-        ),
-      );
-    }
-
-    return Container(
-      padding: const EdgeInsets.all(25),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFF),
-        shape: BoxShape.circle,
-        border: Border.all(
-          color: const Color(0xFF00AEEF).withOpacity(0.1),
-          width: 2,
-        ),
+                child: Text(
+                  '$_unreadAnnouncementsCount',
+                  style: const TextStyle(color: Colors.white, fontSize: 10),
+                ),
+              ),
+            ),
+        ],
       ),
-      child: const Icon(
-        Icons.analytics_outlined,
-        size: 80,
-        color: Color(0xFF00AEEF),
-      ),
-    );
-  }
-
-  Widget _buildHeroText() {
-    return Column(
-      children: [
-        const Text(
-          "La comptabilité,",
-          style: TextStyle(
-            fontSize: 32,
-            fontWeight: FontWeight.w300,
-            color: Color(0xFF64748B),
-          ),
-        ),
-        const Text(
-          "réinventée.",
-          style: TextStyle(
-            fontSize: 38,
-            fontWeight: FontWeight.w900,
-            color: Color(0xFF1E293B),
-            height: 1.1,
-          ),
-        ),
-        const SizedBox(height: 20),
-        // 🔥 Slogan dynamique
-        Text(
-          _companySlogan,
-          textAlign: TextAlign.center,
-          style: const TextStyle(
-            fontSize: 15,
-            color: Color(0xFF94A3B8),
-            height: 1.5,
-          ),
-        ),
-      ],
     );
   }
 
@@ -460,7 +207,6 @@ class _AcceuilScreenState extends State<AcceuilScreen> {
             "COMMENCER",
             style: TextStyle(
               color: Colors.white,
-              fontSize: 16,
               fontWeight: FontWeight.bold,
               letterSpacing: 2,
             ),
@@ -469,4 +215,92 @@ class _AcceuilScreenState extends State<AcceuilScreen> {
       ),
     );
   }
+
+  Widget _buildBackgroundAura() => Positioned(
+    top: -150,
+    right: -100,
+    child: Container(
+      width: 400,
+      height: 400,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: RadialGradient(
+          colors: [
+            const Color(0xFF00AEEF).withOpacity(0.08),
+            Colors.transparent,
+          ],
+        ),
+      ),
+    ),
+  );
+  Widget _buildGlobalBranding() => Column(
+    children: [
+      Container(
+        height: 60,
+        width: 60,
+        decoration: BoxDecoration(
+          color: const Color(0xFF1E293B),
+          borderRadius: BorderRadius.circular(18),
+        ),
+        child: const Icon(Icons.account_balance_rounded, color: Colors.white),
+      ),
+      const SizedBox(height: 15),
+      Text(
+        _companyName.toUpperCase(),
+        style: const TextStyle(
+          fontSize: 16,
+          fontWeight: FontWeight.w800,
+          color: Color(0xFF1E293B),
+          letterSpacing: 3,
+        ),
+      ),
+    ],
+  );
+  Widget _buildVisualElement() => Container(
+    padding: const EdgeInsets.all(25),
+    decoration: BoxDecoration(
+      color: const Color(0xFFF8FAFF),
+      shape: BoxShape.circle,
+      border: Border.all(
+        color: const Color(0xFF00AEEF).withOpacity(0.1),
+        width: 2,
+      ),
+    ),
+    child: const Icon(
+      Icons.analytics_outlined,
+      size: 80,
+      color: Color(0xFF00AEEF),
+    ),
+  );
+  Widget _buildHeroText() => Column(
+    children: [
+      const Text(
+        "La comptabilité,",
+        style: TextStyle(
+          fontSize: 32,
+          fontWeight: FontWeight.w300,
+          color: Color(0xFF64748B),
+        ),
+      ),
+      const Text(
+        "réinventée.",
+        style: TextStyle(
+          fontSize: 38,
+          fontWeight: FontWeight.w900,
+          color: Color(0xFF1E293B),
+          height: 1.1,
+        ),
+      ),
+      const SizedBox(height: 20),
+      Text(
+        _companySlogan,
+        textAlign: TextAlign.center,
+        style: const TextStyle(
+          fontSize: 15,
+          color: Color(0xFF94A3B8),
+          height: 1.5,
+        ),
+      ),
+    ],
+  );
 }
