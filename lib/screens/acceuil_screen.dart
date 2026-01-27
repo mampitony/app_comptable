@@ -80,6 +80,7 @@ class _AcceuilScreenState extends State<AcceuilScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Row(
           children: [
             Icon(Icons.campaign, color: Color(0xFF0163D2)),
@@ -93,21 +94,43 @@ class _AcceuilScreenState extends State<AcceuilScreen> {
           child: StreamBuilder<List<Map<String, dynamic>>>(
             stream: _announcementService.announcementsStream,
             builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting)
+              if (snapshot.connectionState == ConnectionState.waiting) {
                 return const Center(child: CircularProgressIndicator());
-              final announcements = snapshot.data ?? [];
+              }
+              final announcementsData = snapshot.data ?? [];
+              if (announcementsData.isEmpty) {
+                return const Center(
+                  child: Text("Aucune annonce pour le moment."),
+                );
+              }
               return ListView.builder(
-                itemCount: announcements.length,
+                itemCount: announcementsData.length,
                 itemBuilder: (context, index) => Card(
+                  margin: const EdgeInsets.symmetric(vertical: 5),
                   child: ListTile(
-                    title: Text(announcements[index]['timestamp']),
-                    subtitle: Text(announcements[index]['message']),
+                    title: Text(
+                      announcementsData[index]['timestamp'] ?? '',
+                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                    subtitle: Text(
+                      announcementsData[index]['message'] ?? '',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black87,
+                      ),
+                    ),
                   ),
                 ),
               );
             },
           ),
         ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Fermer"),
+          ),
+        ],
       ),
     );
   }
@@ -124,9 +147,9 @@ class _AcceuilScreenState extends State<AcceuilScreen> {
           "ACCUEIL",
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
+        // 🔹 RÉINTÉGRATION DU BOUTON DE NOTIFICATION ICI
+        actions: [_buildNotificationButton(), const SizedBox(width: 10)],
       ),
-
-      // 🔥 AJOUT : AppBar pour garantir qu'elle reste visible au logout
       body: Stack(
         children: [
           _buildBackgroundAura(),
@@ -153,34 +176,46 @@ class _AcceuilScreenState extends State<AcceuilScreen> {
     );
   }
 
+  // Widget du bouton de notification avec le badge (Logique conservée)
   Widget _buildNotificationButton() {
     return GestureDetector(
       onTap: _showAnnouncements,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          const Icon(
-            Icons.notifications_outlined,
-            color: Colors.white,
-            size: 28,
-          ),
-          if (_unreadAnnouncementsCount > 0)
-            Positioned(
-              top: 10,
-              right: 0,
-              child: Container(
-                padding: const EdgeInsets.all(4),
-                decoration: const BoxDecoration(
-                  color: Colors.red,
-                  shape: BoxShape.circle,
-                ),
-                child: Text(
-                  '$_unreadAnnouncementsCount',
-                  style: const TextStyle(color: Colors.white, fontSize: 10),
+      child: Center(
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            const Icon(
+              Icons.notifications_none_rounded, // Icône plus moderne
+              color: Colors.white,
+              size: 28,
+            ),
+            if (_unreadAnnouncementsCount > 0)
+              Positioned(
+                right: -2,
+                top: -2,
+                child: Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: const BoxDecoration(
+                    color: Colors.red,
+                    shape: BoxShape.circle,
+                  ),
+                  constraints: const BoxConstraints(
+                    minWidth: 16,
+                    minHeight: 16,
+                  ),
+                  child: Text(
+                    '$_unreadAnnouncementsCount',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
                 ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -233,6 +268,7 @@ class _AcceuilScreenState extends State<AcceuilScreen> {
       ),
     ),
   );
+
   Widget _buildGlobalBranding() => Column(
     children: [
       Container(
@@ -256,6 +292,7 @@ class _AcceuilScreenState extends State<AcceuilScreen> {
       ),
     ],
   );
+
   Widget _buildVisualElement() => Container(
     padding: const EdgeInsets.all(25),
     decoration: BoxDecoration(
@@ -272,6 +309,7 @@ class _AcceuilScreenState extends State<AcceuilScreen> {
       color: Color(0xFF00AEEF),
     ),
   );
+
   Widget _buildHeroText() => Column(
     children: [
       const Text(
