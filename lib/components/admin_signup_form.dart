@@ -80,8 +80,7 @@ class _AdminSignupFormState extends State<AdminSignupForm> {
       }
 
       final users = await getAllUsers();
-      final count =
-          users.where((u) => u['role'] == roleMembre).length;
+      final count = users.where((u) => u['role'] == roleMembre).length;
 
       final Map<String, int> limitedRoles = {
         "President": 1,
@@ -92,8 +91,10 @@ class _AdminSignupFormState extends State<AdminSignupForm> {
 
       if (limitedRoles[roleMembre] != null &&
           count >= (limitedRoles[roleMembre] ?? 0)) {
-        _showAlert('Erreur',
-            'Le rôle $roleMembre est limité à ${limitedRoles[roleMembre]} membre(s).');
+        _showAlert(
+          'Erreur',
+          'Le rôle $roleMembre est limité à ${limitedRoles[roleMembre]} membre(s).',
+        );
         return;
       }
 
@@ -151,16 +152,16 @@ class _AdminSignupFormState extends State<AdminSignupForm> {
       children: [
         Text(
           label,
-          style:
-              const TextStyle(fontWeight: FontWeight.bold, color: Colors.black87),
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
+            color: Colors.black87,
+          ),
         ),
         const SizedBox(height: 5),
         TextFormField(
           decoration: InputDecoration(
             hintText: hint,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(5),
-            ),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(5)),
             filled: true,
             fillColor: Colors.white,
           ),
@@ -177,9 +178,7 @@ class _AdminSignupFormState extends State<AdminSignupForm> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("Inscription d'un administrateur"),
-      ),
+      appBar: AppBar(title: const Text("Inscription d'un administrateur")),
       body: Container(
         color: const Color(0xFFF5F5F5),
         padding: const EdgeInsets.all(20),
@@ -204,15 +203,17 @@ class _AdminSignupFormState extends State<AdminSignupForm> {
                   label: 'Nom *',
                   hint: 'Nom *',
                   onChanged: (v) => nom = v,
-                  validator: (v) =>
-                      (v == null || v.isEmpty) ? 'Veuillez saisir le nom' : null,
+                  validator: (v) => (v == null || v.isEmpty)
+                      ? 'Veuillez saisir le nom'
+                      : null,
                 ),
                 _buildTextField(
                   label: 'Prénom *',
                   hint: 'Prénom *',
                   onChanged: (v) => prenom = v,
-                  validator: (v) =>
-                      (v == null || v.isEmpty) ? 'Veuillez saisir le prénom' : null,
+                  validator: (v) => (v == null || v.isEmpty)
+                      ? 'Veuillez saisir le prénom'
+                      : null,
                 ),
                 _buildTextField(
                   label: 'Email *',
@@ -233,7 +234,9 @@ class _AdminSignupFormState extends State<AdminSignupForm> {
                 const Text(
                   'Rôle du Membre *',
                   style: TextStyle(
-                      fontWeight: FontWeight.bold, color: Colors.black87),
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black87,
+                  ),
                 ),
                 const SizedBox(height: 5),
                 DropdownButtonFormField<String>(
@@ -280,8 +283,9 @@ class _AdminSignupFormState extends State<AdminSignupForm> {
                       roleMembre = value;
                     });
                   },
-                  validator: (v) =>
-                      (v == null || v.isEmpty) ? 'Veuillez choisir un rôle' : null,
+                  validator: (v) => (v == null || v.isEmpty)
+                      ? 'Veuillez choisir un rôle'
+                      : null,
                 ),
                 const SizedBox(height: 15),
 
@@ -289,22 +293,25 @@ class _AdminSignupFormState extends State<AdminSignupForm> {
                   label: "Établissement *",
                   hint: "Établissement *",
                   onChanged: (v) => etablissement = v,
-                  validator: (v) =>
-                      (v == null || v.isEmpty) ? 'Veuillez saisir l\'établissement' : null,
+                  validator: (v) => (v == null || v.isEmpty)
+                      ? 'Veuillez saisir l\'établissement'
+                      : null,
                 ),
                 _buildTextField(
                   label: "Niveau *",
                   hint: "Niveau *",
                   onChanged: (v) => niveau = v,
-                  validator: (v) =>
-                      (v == null || v.isEmpty) ? 'Veuillez saisir le niveau' : null,
+                  validator: (v) => (v == null || v.isEmpty)
+                      ? 'Veuillez saisir le niveau'
+                      : null,
                 ),
                 _buildTextField(
                   label: "Mention *",
                   hint: "Mention *",
                   onChanged: (v) => mention = v,
-                  validator: (v) =>
-                      (v == null || v.isEmpty) ? 'Veuillez saisir la mention' : null,
+                  validator: (v) => (v == null || v.isEmpty)
+                      ? 'Veuillez saisir la mention'
+                      : null,
                 ),
                 _buildTextField(
                   label: "Téléphone *",
@@ -326,8 +333,9 @@ class _AdminSignupFormState extends State<AdminSignupForm> {
                   hint: "Mot de passe *",
                   obscureText: true,
                   onChanged: (v) => password = v,
-                  validator: (v) =>
-                      (v == null || v.isEmpty) ? 'Veuillez saisir le mot de passe' : null,
+                  validator: (v) => (v == null || v.isEmpty)
+                      ? 'Veuillez saisir le mot de passe'
+                      : null,
                 ),
                 _buildTextField(
                   label: "Confirmer le mot de passe *",
