@@ -40,10 +40,12 @@ class _MemberListState extends State<MemberList> {
 
     return Column(
       children: [
+        // Barre de recherche
         TextField(
           decoration: InputDecoration(
             hintText: 'Rechercher un membre...',
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(5)),
+            prefixIcon: const Icon(Icons.search),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
             filled: true,
             fillColor: Colors.white,
           ),
@@ -51,112 +53,152 @@ class _MemberListState extends State<MemberList> {
             setState(() => searchQuery = v);
           },
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 15),
+        
+        // Liste des membres
         Expanded(
           child: filteredMembers.isEmpty
               ? const Center(
-                  child: Text(
-                    'Aucun membre trouvé',
-                    style: TextStyle(color: Colors.grey),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.people_outline, size: 80, color: Colors.grey),
+                      SizedBox(height: 10),
+                      Text(
+                        'Aucun membre trouvé',
+                        style: TextStyle(color: Colors.grey, fontSize: 16),
+                      ),
+                    ],
                   ),
                 )
               : ListView.builder(
                   itemCount: filteredMembers.length,
                   itemBuilder: (context, index) {
                     final item = filteredMembers[index];
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 5),
-                      padding: const EdgeInsets.all(15),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(5),
-                        border: Border.all(color: const Color(0xFFEEEEEE)),
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 10),
+                      elevation: 2,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
                       ),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          if (item['profileImage'] != null &&
-                              (item['profileImage'] as String).isNotEmpty)
-                            Container(
-                              margin: const EdgeInsets.only(right: 10),
-                              child: CircleAvatar(
-                                radius: 20,
+                      child: Padding(
+                        padding: const EdgeInsets.all(15),
+                        child: Row(
+                          children: [
+                            // Avatar
+                            if (item['profileImage'] != null &&
+                                (item['profileImage'] as String).isNotEmpty)
+                              CircleAvatar(
+                                radius: 30,
                                 backgroundImage: FileImage(
                                   File(item['profileImage']),
                                 ),
+                              )
+                            else
+                              CircleAvatar(
+                                radius: 30,
+                                backgroundColor: const Color(0xFF0163D2),
+                                child: Text(
+                                  ((item['name'] ?? 'U')[0] +
+                                          (item['prenom'] ?? '')[0])
+                                      .toUpperCase(),
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            
+                            const SizedBox(width: 15),
+                            
+                            // Informations du membre
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    '${item['name'] ?? ''} ${item['prenom'] ?? ''}',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    item['role'] ?? '',
+                                    style: const TextStyle(
+                                      color: Color(0xFF0163D2),
+                                      fontWeight: FontWeight.w500,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    item['email'] ?? '',
+                                    style: TextStyle(
+                                      color: Colors.grey[600],
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    '${item['etablissement'] ?? ''} - ${item['niveau'] ?? ''} - ${item['mention'] ?? ''}',
+                                    style: TextStyle(
+                                      color: Colors.grey[600],
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    item['telephone'] ?? '',
+                                    style: TextStyle(
+                                      color: Colors.grey[600],
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                            
+                            // Boutons d'action
+                            Column(
+                              mainAxisSize: MainAxisSize.min,
                               children: [
-                                Text(
-                                  '${item['name'] ?? ''} ${item['prenom'] ?? ''} (${item['role'] ?? ''})',
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 16,
-                                  ),
+                                IconButton(
+                                  onPressed: () {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) =>
+                                            MemberCard(member: item),
+                                      ),
+                                    );
+                                  },
+                                  icon: const Icon(Icons.credit_card),
+                                  color: Colors.green,
+                                  iconSize: 20,
+                                  tooltip: 'Voir la carte',
                                 ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  item['email'] ?? '',
-                                  style: const TextStyle(color: Colors.grey),
+                                IconButton(
+                                  onPressed: () => widget.onEdit(item),
+                                  icon: const Icon(Icons.edit),
+                                  color: Colors.blue,
+                                  iconSize: 20,
+                                  tooltip: 'Modifier',
                                 ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  '${item['etablissement'] ?? ''} - ${item['niveau'] ?? ''} - ${item['mention'] ?? ''}',
-                                  style: const TextStyle(
-                                    color: Colors.grey,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  item['telephone'] ?? '',
-                                  style: const TextStyle(
-                                    color: Colors.grey,
-                                    fontSize: 12,
-                                  ),
+                                IconButton(
+                                  onPressed: () =>
+                                      widget.onDelete(item['id'] as int),
+                                  icon: const Icon(Icons.delete),
+                                  color: Colors.red,
+                                  iconSize: 20,
+                                  tooltip: 'Supprimer',
                                 ),
                               ],
                             ),
-                          ),
-                          Column(
-                            children: [
-                              TextButton.icon(
-                                onPressed: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (context) =>
-                                          MemberCard(member: item),
-                                    ),
-                                  );
-                                },
-                                icon: const Icon(Icons.credit_card, size: 16),
-                                label: const Text('Carte'),
-                                style: TextButton.styleFrom(
-                                  foregroundColor: Colors.green,
-                                ),
-                              ),
-                              TextButton(
-                                onPressed: () => widget.onEdit(item),
-                                child: const Text(
-                                  'Modifier',
-                                  style: TextStyle(color: Colors.blue),
-                                ),
-                              ),
-                              TextButton(
-                                onPressed: () =>
-                                    widget.onDelete(item['id'] as int),
-                                child: const Text(
-                                  'Supprimer',
-                                  style: TextStyle(color: Colors.red),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     );
                   },

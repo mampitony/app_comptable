@@ -1,297 +1,114 @@
 // lib/screens/admin_screen.dart
-import 'package:app_comptable/components/member_form.dart';
-import 'package:app_comptable/components/member_list.dart';
 import 'package:flutter/material.dart';
-import '../database/user_repository.dart';
+import 'package:app_comptable/screens/gestion_members_screen.dart';
+import 'package:app_comptable/screens/configuration_screen.dart';
 
 class AdminScreen extends StatefulWidget {
-  final Map<String, dynamic>? user; // prenom, profileImage, etc.
-
-  const AdminScreen({
-    super.key,
-    this.user,
-  });
+  const AdminScreen({Key? key}) : super(key: key);
 
   @override
   State<AdminScreen> createState() => _AdminScreenState();
 }
 
 class _AdminScreenState extends State<AdminScreen> {
-  final _userRepo = UserRepository();
-
-  List<Map<String, dynamic>> members = [];
-  bool isLoading = false;
-
-  @override
-  void initState() {
-    super.initState();
-    loadMembers();
-  }
-
-  Future<void> loadMembers() async {
-    try {
-      if (!mounted) return;
-      setState(() => isLoading = true);
-
-      // On récupère tous les utilisateurs
-      final users = await _userRepo.getAllUsers();
-
-      if (!mounted) return;
-      setState(() {
-        members = users;
-        isLoading = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => isLoading = false);
-      debugPrint('Erreur lors du chargement des membres: $e');
-      _showAlert('Erreur', 'Impossible de charger les membres');
-    }
-  }
-
-  // --- Ouvre le formulaire en mode AJOUT (membre normal) ---
-  void openAddMemberForm() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      isDismissible: true, // Permet de fermer en touchant à l'extérieur
-      enableDrag: true, // Permet de fermer en glissant vers le bas
-      builder: (ctx) {
-        return Padding(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(ctx).viewInsets.bottom,
-          ),
-          child: MemberForm(
-            member: null,
-            isAdmin: false,
-            onClose: () {
-              Navigator.of(ctx).pop();
-              loadMembers();
-            },
-          ),
-        );
-      },
-    );
-  }
-
-  // --- Ouvre le formulaire en mode AJOUT (admin) ---
-  void openAddAdminForm() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      isDismissible: true,
-      enableDrag: true,
-      builder: (ctx) {
-        return Padding(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(ctx).viewInsets.bottom,
-          ),
-          child: MemberForm(
-            member: null,
-            isAdmin: true,
-            onClose: () {
-              Navigator.of(ctx).pop();
-              loadMembers();
-            },
-          ),
-        );
-      },
-    );
-  }
-
-  // --- Ouvre le formulaire en mode MODIFICATION ---
-  void openEditMemberForm(Map<String, dynamic> member) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      isDismissible: true,
-      enableDrag: true,
-      builder: (ctx) {
-        return Padding(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(ctx).viewInsets.bottom,
-          ),
-          child: MemberForm(
-            member: member,
-            isAdmin: member['role'] == 'admin',
-            onClose: () {
-              Navigator.of(ctx).pop();
-              loadMembers();
-            },
-          ),
-        );
-      },
-    );
-  }
-
-  // --- Suppression depuis la liste (avec confirmation & DB) ---
-  Future<void> deleteMember(int id) async {
-    // CORRECTION: Utiliser le context actuel avec mounted check
-    if (!mounted) return;
-    
-    final confirm = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false, // Empêche de fermer en touchant à l'extérieur
-      builder: (BuildContext dialogContext) => AlertDialog(
-        title: const Text('Confirmation'),
-        content: const Text('Êtes-vous sûr de vouloir supprimer ce membre ?'),
-        actions: [
-          TextButton(
-            child: const Text('Annuler'),
-            onPressed: () {
-              // IMPORTANT: Utiliser dialogContext pour fermer le dialog
-              Navigator.of(dialogContext).pop(false);
-            },
-          ),
-          TextButton(
-            style: TextButton.styleFrom(
-              foregroundColor: Colors.red,
-            ),
-            child: const Text('Supprimer'),
-            onPressed: () {
-              // IMPORTANT: Utiliser dialogContext pour fermer le dialog
-              Navigator.of(dialogContext).pop(true);
-            },
-          ),
-        ],
-      ),
-    );
-
-    // Si l'utilisateur a annulé ou fermé le dialog
-    if (confirm != true) return;
-
-    // Vérifier que le widget est toujours monté avant de continuer
-    if (!mounted) return;
-
-    try {
-      // Effectuer la suppression
-      final result = await _userRepo.deleteUser(id);
-      
-      if (!mounted) return;
-
-      if (result > 0) {
-        // Suppression réussie
-        await loadMembers();
-        
-        if (!mounted) return;
-        
-        // Afficher un message de succès
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Membre supprimé avec succès'),
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 2),
-          ),
-        );
-      } else {
-        // Aucune ligne supprimée
-        if (!mounted) return;
-        _showAlert('Erreur', 'Impossible de supprimer le membre');
-      }
-    } catch (e) {
-      debugPrint('Erreur lors de la suppression: $e');
-      if (!mounted) return;
-      _showAlert('Erreur', 'Une erreur est survenue lors de la suppression: $e');
-    }
-  }
-
-  Future<void> _showAlert(String title, String message) async {
-    if (!mounted) return;
-    
-    return showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (BuildContext dialogContext) => AlertDialog(
-        title: Text(title),
-        content: Text(message),
-        actions: [
-          TextButton(
-            child: const Text('OK'),
-            onPressed: () {
-              // Utiliser dialogContext pour fermer uniquement le dialog
-              Navigator.of(dialogContext).pop();
-            },
-          )
-        ],
-      ),
-    );
-  }
+  int _selectedMenuIndex = 0; // 0 = Gestion membres, 1 = Configuration
 
   @override
   Widget build(BuildContext context) {
-    final user = widget.user;
-    final prenom = user?['prenom'] as String?;
-    final profileImage = user?['profileImage'] as String?;
-
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F5),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
+      appBar: AppBar(
+        backgroundColor: const Color(0xFF0163D2),
+        title: Text(
+          _selectedMenuIndex == 0 ? 'Gestion des membres' : 'Configuration',
+          style: const TextStyle(color: Colors.white),
+        ),
+        iconTheme: const IconThemeData(color: Colors.white),
+        // Le bouton menu (hamburger) sera automatiquement ajouté par Flutter
+      ),
+      // ✅ Drawer = Menu coulissant
+      drawer: Drawer(
+        child: Container(
+          color: Colors.white,
           child: Column(
             children: [
-              // En-tête avec prénom + photo
-              Row(
-                children: [
-                  if (profileImage != null && profileImage.isNotEmpty)
-                    CircleAvatar(
-                      radius: 20,
-                      backgroundImage: NetworkImage(profileImage),
+              // En-tête du drawer
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 20),
+                color: const Color(0xFF0163D2),
+                child: const Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.admin_panel_settings, color: Colors.white, size: 50),
+                    SizedBox(height: 10),
+                    Text(
+                      'Administration',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
-                  if (profileImage != null && profileImage.isNotEmpty)
-                    const SizedBox(width: 10),
-                  Text(
-                    prenom ?? 'Gestion des Membres',
-                    style: const TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF333333),
-                    ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-              const SizedBox(height: 20),
-
-              // Ligne de boutons Ajouter membre / Ajouter admin
-              // Row(
-              //   children: [
-              //     const SizedBox(width: 10),
-              //     Expanded(
-              //       child: ElevatedButton(
-              //         style: ElevatedButton.styleFrom(
-              //           backgroundColor: const Color(0xFFFF5722),
-              //         ),
-              //         onPressed: openAddAdminForm,
-              //         child: const Text('Ajouter un admin'),
-              //       ),
-              //     ),
-              //   ],
-              // ),
-              const SizedBox(height: 20),
-
-              // Liste des membres
-              Expanded(
-                child: isLoading
-                    ? const Center(child: CircularProgressIndicator())
-                    : members.isEmpty
-                        ? const Center(
-                            child: Text('Aucun membre trouvé.'),
-                          )
-                        : MemberList(
-                            members: members,
-                            onEdit: openEditMemberForm,
-                            onDelete: deleteMember,
-                          ),
+              
+              const SizedBox(height: 10),
+              
+              // Menu items
+              _buildMenuItem(
+                icon: Icons.people,
+                title: 'Gestion membres',
+                index: 0,
+              ),
+              _buildMenuItem(
+                icon: Icons.settings,
+                title: 'Configuration',
+                index: 1,
               ),
             ],
           ),
         ),
       ),
-      // On garde aussi le FAB si tu veux un accès rapide
-      floatingActionButton: FloatingActionButton(
-        onPressed: openAddMemberForm,
-        child: const Icon(Icons.add),
+      body: IndexedStack(
+        index: _selectedMenuIndex,
+        children: const [
+          GestionMembresScreen(),
+          ConfigurationScreen(),
+        ],
       ),
+    );
+  }
+
+  Widget _buildMenuItem({
+    required IconData icon,
+    required String title,
+    required int index,
+  }) {
+    final isSelected = _selectedMenuIndex == index;
+    
+    return ListTile(
+      leading: Icon(
+        icon,
+        color: isSelected ? const Color(0xFF0163D2) : Colors.grey[700],
+        size: 24,
+      ),
+      title: Text(
+        title,
+        style: TextStyle(
+          color: isSelected ? const Color(0xFF0163D2) : Colors.grey[700],
+          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+          fontSize: 16,
+        ),
+      ),
+      tileColor: isSelected ? const Color(0xFF0163D2).withOpacity(0.1) : Colors.transparent,
+      onTap: () {
+        setState(() {
+          _selectedMenuIndex = index;
+        });
+        // Fermer le drawer après la sélection
+        Navigator.pop(context);
+      },
     );
   }
 }
