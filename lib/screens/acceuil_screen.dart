@@ -1,19 +1,178 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:io';
 
-class AcceuilScreen extends StatelessWidget {
+class AcceuilScreen extends StatefulWidget {
   final VoidCallback? onNavigateToConnexion;
 
   const AcceuilScreen({super.key, this.onNavigateToConnexion});
 
   @override
+  State<AcceuilScreen> createState() => _AcceuilScreenState();
+}
+
+class _AcceuilScreenState extends State<AcceuilScreen> {
+  String? _appLogoPath;
+  int _unreadAnnouncementsCount = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLogo();
+    _loadUnreadCount();
+  }
+
+  // Charger le logo depuis SharedPreferences
+  Future<void> _loadLogo() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _appLogoPath = prefs.getString('app_logo_path');
+    });
+  }
+
+  // Charger le nombre d'annonces non lues
+  Future<void> _loadUnreadCount() async {
+    final prefs = await SharedPreferences.getInstance();
+    final announcements = prefs.getStringList('announcements') ?? [];
+    final lastReadCount = prefs.getInt('last_read_announcements_count') ?? 0;
+    
+    setState(() {
+      _unreadAnnouncementsCount = announcements.length - lastReadCount;
+      if (_unreadAnnouncementsCount < 0) _unreadAnnouncementsCount = 0;
+    });
+  }
+
+  // Afficher les annonces
+  Future<void> _showAnnouncements() async {
+    final prefs = await SharedPreferences.getInstance();
+    final announcements = prefs.getStringList('announcements') ?? [];
+    
+    // Marquer comme lu
+    await prefs.setInt('last_read_announcements_count', announcements.length);
+    setState(() {
+      _unreadAnnouncementsCount = 0;
+    });
+    
+    if (!mounted) return;
+    
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            const Icon(Icons.campaign, color: Color(0xFF0163D2)),
+            const SizedBox(width: 10),
+            const Text('Annonces'),
+          ],
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          height: 400,
+          child: announcements.isEmpty
+              ? const Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.notifications_off_outlined,
+                        size: 60,
+                        color: Colors.grey,
+                      ),
+                      SizedBox(height: 15),
+                      Text(
+                        'Aucune annonce pour le moment',
+                        style: TextStyle(color: Colors.grey),
+                      ),
+                    ],
+                  ),
+                )
+              : ListView.builder(
+                  itemCount: announcements.length,
+                  itemBuilder: (context, index) {
+                    final parts = announcements[index].split('|');
+                    final timestamp = parts[0];
+                    final message = parts.length > 1 ? parts[1] : announcements[index];
+                    
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      elevation: 2,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(15),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF0163D2).withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: const Icon(
+                                    Icons.campaign,
+                                    color: Color(0xFF0163D2),
+                                    size: 20,
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    timestamp,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.grey[600],
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              message,
+                              style: const TextStyle(
+                                fontSize: 14,
+                                height: 1.5,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Fermer'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFFFFFFF), // Blanc pur pour la clarté
+      backgroundColor: const Color(0xFFFFFFFF),
       body: Stack(
         children: [
-          // Aura lumineuse en arrière-plan (rappel du home_screen)
           _buildBackgroundAura(),
-
+          
+          // Bouton de notification en haut à droite
+          SafeArea(
+            child: Positioned(
+              top: 20,
+              right: 20,
+              child: _buildNotificationButton(),
+            ),
+          ),
+          
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 40.0),
@@ -21,31 +180,78 @@ class AcceuilScreen extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   const SizedBox(height: 80),
-                  
-                  // LOGO GLOBAL MINIMALISTE
                   _buildGlobalBranding(),
-
                   const Spacer(),
-
-                  // VISUEL DE COMPTABILITÉ MODERNE
                   _buildVisualElement(),
-
                   const Spacer(),
-
-                  // SECTION TEXTE D'IMPACT
                   _buildHeroText(),
-
                   const SizedBox(height: 50),
-
-                  // BOUTON D'ACTION PRINCIPAL
                   _buildPrimaryButton(),
-
                   const SizedBox(height: 40),
                 ],
               ),
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  // Bouton de notification avec badge
+  Widget _buildNotificationButton() {
+    return GestureDetector(
+      onTap: _showAnnouncements,
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          shape: BoxShape.circle,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.1),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            const Icon(
+              Icons.notifications_outlined,
+              color: Color(0xFF1E293B),
+              size: 24,
+            ),
+            if (_unreadAnnouncementsCount > 0)
+              Positioned(
+                top: -4,
+                right: -4,
+                child: Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: const BoxDecoration(
+                    color: Colors.red,
+                    shape: BoxShape.circle,
+                  ),
+                  constraints: const BoxConstraints(
+                    minWidth: 20,
+                    minHeight: 20,
+                  ),
+                  child: Center(
+                    child: Text(
+                      _unreadAnnouncementsCount > 99 
+                          ? '99+' 
+                          : '$_unreadAnnouncementsCount',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -87,7 +293,11 @@ class AcceuilScreen extends StatelessWidget {
               ),
             ],
           ),
-          child: const Icon(Icons.account_balance_rounded, color: Colors.white, size: 30),
+          child: const Icon(
+            Icons.account_balance_rounded,
+            color: Colors.white,
+            size: 30,
+          ),
         ),
         const SizedBox(height: 15),
         const Text(
@@ -104,12 +314,46 @@ class AcceuilScreen extends StatelessWidget {
   }
 
   Widget _buildVisualElement() {
+    if (_appLogoPath != null && _appLogoPath!.isNotEmpty) {
+      return Container(
+        width: 130,
+        height: 130,
+        decoration: BoxDecoration(
+          color: const Color(0xFFF8FAFF),
+          shape: BoxShape.circle,
+          border: Border.all(
+            color: const Color(0xFF00AEEF).withOpacity(0.1),
+            width: 2,
+          ),
+        ),
+        child: ClipOval(
+          child: Image.file(
+            File(_appLogoPath!),
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) {
+              return Padding(
+                padding: const EdgeInsets.all(25),
+                child: const Icon(
+                  Icons.analytics_outlined,
+                  size: 80,
+                  color: Color(0xFF00AEEF),
+                ),
+              );
+            },
+          ),
+        ),
+      );
+    }
+
     return Container(
       padding: const EdgeInsets.all(25),
       decoration: BoxDecoration(
         color: const Color(0xFFF8FAFF),
         shape: BoxShape.circle,
-        border: Border.all(color: const Color(0xFF00AEEF).withOpacity(0.1), width: 2),
+        border: Border.all(
+          color: const Color(0xFF00AEEF).withOpacity(0.1),
+          width: 2,
+        ),
       ),
       child: const Icon(
         Icons.analytics_outlined,
@@ -143,11 +387,7 @@ class AcceuilScreen extends StatelessWidget {
         const Text(
           "Une solution globale de gestion pour piloter vos actifs avec une précision absolue.",
           textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: 15,
-            color: Color(0xFF94A3B8),
-            height: 1.5,
-          ),
+          style: TextStyle(fontSize: 15, color: Color(0xFF94A3B8), height: 1.5),
         ),
       ],
     );
@@ -155,7 +395,7 @@ class AcceuilScreen extends StatelessWidget {
 
   Widget _buildPrimaryButton() {
     return GestureDetector(
-      onTap: onNavigateToConnexion,
+      onTap: widget.onNavigateToConnexion,
       child: Container(
         width: double.infinity,
         height: 65,

@@ -56,13 +56,13 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
       source: ImageSource.gallery,
       imageQuality: 100,
     );
-    
+
     if (result != null) {
       setState(() {
         _appLogoPath = result.path;
       });
       await _saveSetting('app_logo_path', result.path);
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Logo mis à jour avec succès')),
@@ -78,18 +78,18 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
     });
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('app_logo_path');
-    
+
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Logo supprimé')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Logo supprimé')));
     }
   }
 
   // Afficher le dialog pour créer une annonce
   void _showAnnouncementDialog() {
     _announcementController.clear();
-    
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -143,33 +143,32 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
   // Publier l'annonce
   Future<void> _publishAnnouncement() async {
     final announcement = _announcementController.text.trim();
-    
+
     if (announcement.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('L\'annonce est vide')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('L\'annonce est vide')));
       return;
     }
 
     try {
       final prefs = await SharedPreferences.getInstance();
       final now = DateTime.now();
-      final timestamp = '${now.day}/${now.month}/${now.year} ${now.hour}:${now.minute}';
-      
-      // Récupérer les annonces existantes
+      final timestamp =
+          '${now.day}/${now.month}/${now.year} ${now.hour}:${now.minute}';
+
       List<String> announcements = prefs.getStringList('announcements') ?? [];
-      
-      // Ajouter la nouvelle annonce avec timestamp
       announcements.insert(0, '$timestamp|$announcement');
-      
-      // Limiter à 10 annonces maximum
+
       if (announcements.length > 10) {
         announcements = announcements.sublist(0, 10);
       }
-      
-      // Sauvegarder
+
       await prefs.setStringList('announcements', announcements);
-      
+
+      // Réinitialiser le compteur pour montrer la nouvelle annonce comme non lue
+      await prefs.setInt('last_read_announcements_count', 0);
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -180,20 +179,26 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erreur: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Erreur: $e')));
       }
     }
+  }
+
+  // Réinitialiser le compteur d'annonces non lues
+  Future<void> _resetUnreadCount() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('last_read_announcements_count', 0);
   }
 
   // Afficher les annonces existantes
   void _viewAnnouncements() async {
     final prefs = await SharedPreferences.getInstance();
     final announcements = prefs.getStringList('announcements') ?? [];
-    
+
     if (!mounted) return;
-    
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -216,8 +221,10 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
                   itemBuilder: (context, index) {
                     final parts = announcements[index].split('|');
                     final timestamp = parts[0];
-                    final message = parts.length > 1 ? parts[1] : announcements[index];
-                    
+                    final message = parts.length > 1
+                        ? parts[1]
+                        : announcements[index];
+
                     return Card(
                       margin: const EdgeInsets.only(bottom: 10),
                       child: ListTile(
@@ -256,15 +263,15 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
   Future<void> _deleteAnnouncement(int index) async {
     final prefs = await SharedPreferences.getInstance();
     List<String> announcements = prefs.getStringList('announcements') ?? [];
-    
+
     if (index < announcements.length) {
       announcements.removeAt(index);
       await prefs.setStringList('announcements', announcements);
-      
+
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Annonce supprimée')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Annonce supprimée')));
       }
     }
   }
@@ -280,13 +287,10 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
             children: [
               const Text(
                 'Configuration',
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 30),
-              
+
               // ✅ Section Logo de l'application
               _buildSectionTitle('Logo de l\'application'),
               Card(
@@ -340,7 +344,9 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
                           ElevatedButton.icon(
                             onPressed: _pickAppLogo,
                             icon: const Icon(Icons.upload),
-                            label: Text(_appLogoPath == null ? 'Ajouter' : 'Modifier'),
+                            label: Text(
+                              _appLogoPath == null ? 'Ajouter' : 'Modifier',
+                            ),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: const Color(0xFF0163D2),
                               foregroundColor: Colors.white,
@@ -363,16 +369,19 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
                   ),
                 ),
               ),
-              
+
               const SizedBox(height: 30),
-              
+
               // ✅ Section Annonces
               _buildSectionTitle('Annonces'),
               Card(
                 child: Column(
                   children: [
                     ListTile(
-                      leading: const Icon(Icons.campaign, color: Color(0xFF0163D2)),
+                      leading: const Icon(
+                        Icons.campaign,
+                        color: Color(0xFF0163D2),
+                      ),
                       title: const Text('Créer une annonce'),
                       subtitle: const Text('Informer tous les membres'),
                       trailing: const Icon(Icons.arrow_forward_ios, size: 16),
@@ -389,9 +398,9 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
                   ],
                 ),
               ),
-              
+
               const SizedBox(height: 30),
-              
+
               // Section Notifications
               _buildSectionTitle('Notifications'),
               _buildSwitchTile(
@@ -403,9 +412,9 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
                   _saveSetting('notifications_enabled', value);
                 },
               ),
-              
+
               const Divider(height: 40),
-              
+
               // Section Apparence
               _buildSectionTitle('Apparence'),
               _buildSwitchTile(
@@ -417,18 +426,21 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
                   _saveSetting('dark_mode_enabled', value);
                 },
               ),
-              
+
               const Divider(height: 40),
-              
+
               // Section Actions
               _buildSectionTitle('Actions'),
               ListTile(
-                leading: const Icon(Icons.cleaning_services, color: Colors.orange),
+                leading: const Icon(
+                  Icons.cleaning_services,
+                  color: Colors.orange,
+                ),
                 title: const Text('Vider le cache'),
                 onTap: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Cache vidé')),
-                  );
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(const SnackBar(content: Text('Cache vidé')));
                 },
               ),
               ListTile(
