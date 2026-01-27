@@ -49,7 +49,8 @@ class _AuthScreenState extends State<AuthScreen> {
   void _showAlert(String title, String message) {
     showDialog<void>(
       context: context,
-      builder: (_) => AlertDialog(
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) => AlertDialog(
         title: Text(title),
         content: Text(message),
         actions: [
@@ -58,7 +59,7 @@ class _AuthScreenState extends State<AuthScreen> {
               'OK',
               style: TextStyle(color: Color(0xFF4CAF50)), // Vert
             ),
-            onPressed: () => Navigator.of(context).pop(),
+            onPressed: () => Navigator.of(dialogContext).pop(),
           )
         ],
       ),

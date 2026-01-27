@@ -46,7 +46,7 @@ class _RevenuScreenState extends State<RevenuScreen> {
       setState(() {
         membres = data;
       });
-      debugPrint('✅ Membres chargés: ${membres.length}'); // Debug
+      debugPrint('✅ Membres chargés: ${membres.length}');
     } catch (e) {
       debugPrint('❌ Erreur lors du chargement des membres: $e');
     }
@@ -128,16 +128,17 @@ class _RevenuScreenState extends State<RevenuScreen> {
       enableDrag: true,
       builder: (ctx) => StatefulBuilder(
         builder: (BuildContext context, StateSetter setModalState) {
-          return Padding(
-            padding: EdgeInsets.only(
-              bottom: MediaQuery.of(context).viewInsets.bottom,
-              left: 16,
-              right: 16,
-              top: 16,
+          return Container(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * 0.9,
             ),
-            child: SizedBox(
-              width: double.infinity,
-
+            child: Padding(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).viewInsets.bottom,
+                left: 16,
+                right: 16,
+                top: 16,
+              ),
               child: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -239,9 +240,10 @@ class _RevenuScreenState extends State<RevenuScreen> {
                       ),
                       const SizedBox(height: 12),
 
-                      // Sélection du membre
+                      // Sélection du membre - ✅ CORRECTION ICI
                       DropdownButtonFormField<int>(
                         value: membreId,
+                        isExpanded: true, // ✅ AJOUT IMPORTANT
                         decoration: const InputDecoration(
                           labelText: 'Sélectionner un membre *',
                           prefixIcon: Icon(Icons.person),
@@ -257,6 +259,7 @@ class _RevenuScreenState extends State<RevenuScreen> {
                                 return DropdownMenuItem<int>(
                                   value: membre['id'],
                                   child: Row(
+                                    mainAxisSize: MainAxisSize.min, // ✅ AJOUT
                                     children: [
                                       // Photo de profil miniature
                                       if (membre['profileImage'] != null &&
@@ -274,7 +277,7 @@ class _RevenuScreenState extends State<RevenuScreen> {
                                           child: Icon(Icons.person, size: 12),
                                         ),
                                       const SizedBox(width: 8),
-                                      Expanded(
+                                      Flexible( // ✅ CHANGÉ de Expanded à Flexible
                                         child: Text(
                                           '${membre['name'] ?? ''} ${membre['prenom'] ?? ''}',
                                           overflow: TextOverflow.ellipsis,
@@ -710,32 +713,32 @@ class _RevenuScreenState extends State<RevenuScreen> {
               child: isLoading
                   ? const Center(child: CircularProgressIndicator())
                   : revenus.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.attach_money,
-                            size: 64,
-                            color: Colors.grey[400],
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.attach_money,
+                                size: 64,
+                                color: Colors.grey[400],
+                              ),
+                              const SizedBox(height: 16),
+                              const Text(
+                                'Aucun revenu enregistré',
+                                style: TextStyle(
+                                  fontStyle: FontStyle.italic,
+                                  color: Colors.grey,
+                                  fontSize: 16,
+                                ),
+                              ),
+                            ],
                           ),
-                          const SizedBox(height: 16),
-                          const Text(
-                            'Aucun revenu enregistré',
-                            style: TextStyle(
-                              fontStyle: FontStyle.italic,
-                              color: Colors.grey,
-                              fontSize: 16,
-                            ),
-                          ),
-                        ],
-                      ),
-                    )
-                  : ListView.builder(
-                      itemCount: revenus.length,
-                      itemBuilder: (context, index) =>
-                          _buildRevenuItem(revenus[index]),
-                    ),
+                        )
+                      : ListView.builder(
+                          itemCount: revenus.length,
+                          itemBuilder: (context, index) =>
+                              _buildRevenuItem(revenus[index]),
+                        ),
             ),
           ],
         ),
