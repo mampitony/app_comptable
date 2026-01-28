@@ -7,9 +7,18 @@ import 'package:flutter/rendering.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-class MemberCard extends StatelessWidget {
+class MemberCard extends StatefulWidget {
   final Map<String, dynamic> member;
+
+  const MemberCard({super.key, required this.member});
+
+  @override
+  State<MemberCard> createState() => _MemberCardState();
+}
+
+class _MemberCardState extends State<MemberCard> {
   final GlobalKey _globalKey = GlobalKey();
 
   static const double cardWidth = 320.0;
@@ -20,7 +29,25 @@ class MemberCard extends StatelessWidget {
   static const Color ajemCyan = Color(0xFF06FFF0);
   static const Color ajemDark = Color(0xFF1A4D6D);
 
-  MemberCard({super.key, required this.member});
+  String _companyAcronym = "AJEM";
+  String _companySlogan = "« Ndao handray andraikitra, hitondra fampandrosoana ! »";
+  String? _appLogoPath;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCompanyInfo();
+  }
+
+  Future<void> _loadCompanyInfo() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _companyAcronym = prefs.getString('company_acronym') ?? "AJEM";
+      _companySlogan = prefs.getString('company_slogan') ?? 
+          "« Ndao handray andraikitra, hitondra fampandrosoana ! »";
+      _appLogoPath = prefs.getString('app_logo_path');
+    });
+  }
 
   String _capitalize(String value) {
     if (value.isEmpty) return value;
@@ -37,10 +64,8 @@ class MemberCard extends StatelessWidget {
 
   Future<void> _saveAndShareCard(BuildContext context) async {
     try {
-      // Délai pour laisser le temps au widget de se stabiliser
       await Future.delayed(const Duration(milliseconds: 300));
 
-      // Vérifier que le context existe
       if (_globalKey.currentContext == null) {
         if (!context.mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
@@ -52,7 +77,6 @@ class MemberCard extends StatelessWidget {
         return;
       }
 
-      // Capturer l'image avec RenderRepaintBoundary
       RenderRepaintBoundary boundary =
           _globalKey.currentContext!.findRenderObject()
               as RenderRepaintBoundary;
@@ -73,17 +97,15 @@ class MemberCard extends StatelessWidget {
 
       final Uint8List imageBytes = byteData.buffer.asUint8List();
 
-      // Sauvegarder dans un fichier temporaire
       final dir = await getTemporaryDirectory();
-      final file = File('${dir.path}/carte_ajem_${member['id'] ?? 'temp'}.png');
+      final file = File('${dir.path}/carte_${_companyAcronym.toLowerCase()}_${widget.member['id'] ?? 'temp'}.png');
       await file.writeAsBytes(imageBytes);
 
-      // Partager le fichier
       if (!context.mounted) return;
       await Share.shareXFiles(
         [XFile(file.path)],
         text:
-            'Carte de membre AJEM - ${_capitalize(member['name'] ?? '')} ${_capitalize(member['prenom'] ?? '')}',
+            'Carte de membre $_companyAcronym - ${_capitalize(widget.member['name'] ?? '')} ${_capitalize(widget.member['prenom'] ?? '')}',
       );
     } catch (e, stack) {
       debugPrint('Erreur partage/capture: $e\n$stack');
@@ -102,7 +124,7 @@ class MemberCard extends StatelessWidget {
     return Scaffold(
       backgroundColor: const Color(0xFFF4F6F8),
       appBar: AppBar(
-        title: const Text('Carte de Membre AJEM'),
+        title: Text('Carte de Membre $_companyAcronym'),
         backgroundColor: ajemBlue,
         actions: [
           IconButton(
@@ -134,10 +156,9 @@ class MemberCard extends StatelessWidget {
                 borderRadius: BorderRadius.circular(20),
                 child: Stack(
                   children: [
-                    // Fond blanc
                     Container(color: Colors.white),
 
-                    // Section supérieure avec forme en V (clipper personnalisé)
+                    // Section supérieure dégradée
                     Positioned(
                       top: 0,
                       left: 0,
@@ -157,35 +178,52 @@ class MemberCard extends StatelessWidget {
                       ),
                     ),
 
-                    // Section inférieure avec forme en V inversé
+                    // Section inférieure bleue foncée
                     Positioned(
                       bottom: 0,
                       left: 0,
                       right: 0,
                       child: ClipPath(
                         clipper: InvertedVShapeClipper(),
-                        child: Container(height: 200, color: ajemDark),
+                        child: Container(height: 190, color: ajemDark),
                       ),
                     ),
 
-                    // Contenu principal
-                    Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        _buildHeader(),
-                        const SizedBox(height: 10),
-                        _buildAvatar(),
-                        const SizedBox(height: 20),
-                        _buildIdentity(),
-                        const SizedBox(height: 4),
-                        _buildOffice(),
-                        const SizedBox(height: 12),
-                        _buildID(),
-                        const SizedBox(height: 16),
-                        _buildQRSection(),
-                        const SizedBox(height: 24),
-                      ],
+                    // ✅ Contenu principal
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 20),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          // ✅ Partie supérieure (Header + Avatar)
+                          Column(
+                            children: [
+                              _buildHeader(),
+                              const SizedBox(height: 10),
+                              _buildAvatar(),
+                            ],
+                          ),
+
+                          // ✅ Partie centrale BLANCHE (Nom + Rôle + Niveau + ID)
+                          Column(
+                            children: [
+                              _buildIdentity(),
+                              const SizedBox(height: 8),
+                              _buildOffice(),
+                              const SizedBox(height: 16),
+                              _buildID(), // ✅ ID ICI dans la section blanche
+                            ],
+                          ),
+
+                          // ✅ Partie inférieure (QR + Slogan)
+                          Column(
+                            children: [
+                              _buildQRSection(),
+                              const SizedBox(height: 12),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
@@ -199,10 +237,9 @@ class MemberCard extends StatelessWidget {
 
   Widget _buildHeader() {
     return Container(
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Column(
         children: [
-          // Logo
           Container(
             width: 65,
             height: 65,
@@ -212,22 +249,31 @@ class MemberCard extends StatelessWidget {
             ),
             padding: const EdgeInsets.all(8),
             child: ClipOval(
-              child: Image.asset(
-                'assets/logo.png',
-                fit: BoxFit.contain,
-                errorBuilder: (context, error, stackTrace) => const Icon(
-                  Icons.business,
-                  color: Color(0xFF0099FF),
-                  size: 35,
-                ),
-              ),
+              child: _appLogoPath != null && _appLogoPath!.isNotEmpty
+                  ? Image.file(
+                      File(_appLogoPath!),
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) => const Icon(
+                        Icons.business,
+                        color: Color(0xFF0099FF),
+                        size: 35,
+                      ),
+                    )
+                  : Image.asset(
+                      'assets/logo.png',
+                      fit: BoxFit.contain,
+                      errorBuilder: (context, error, stackTrace) => const Icon(
+                        Icons.business,
+                        color: Color(0xFF0099FF),
+                        size: 35,
+                      ),
+                    ),
             ),
           ),
           const SizedBox(height: 12),
-          // Nom de l'organisation
-          const Text(
-            'AJEM',
-            style: TextStyle(
+          Text(
+            _companyAcronym.toUpperCase(),
+            style: const TextStyle(
               color: Colors.white,
               fontWeight: FontWeight.bold,
               fontSize: 24,
@@ -255,11 +301,10 @@ class MemberCard extends StatelessWidget {
         ],
       ),
       child: ClipOval(
-        child:
-            member['profileImage'] != null &&
-                (member['profileImage'] as String).isNotEmpty
+        child: widget.member['profileImage'] != null &&
+                (widget.member['profileImage'] as String).isNotEmpty
             ? Image.file(
-                File(member['profileImage']),
+                File(widget.member['profileImage']),
                 fit: BoxFit.cover,
                 errorBuilder: (context, error, stackTrace) => Container(
                   color: Colors.grey[300],
@@ -280,7 +325,7 @@ class MemberCard extends StatelessWidget {
       child: Column(
         children: [
           Text(
-            _capitalize('${member['name'] ?? ''} ${member['prenom'] ?? ''}'),
+            _capitalize('${widget.member['name'] ?? ''} ${widget.member['prenom'] ?? ''}'),
             textAlign: TextAlign.center,
             style: const TextStyle(
               color: Color(0xFF2C3E50),
@@ -291,11 +336,11 @@ class MemberCard extends StatelessWidget {
             ),
             maxLines: 3,
             overflow: TextOverflow.ellipsis,
-            softWrap: true,
           ),
           const SizedBox(height: 10),
           Text(
-            (member['role'] ?? 'MEMBRE').toUpperCase(),
+            (widget.member['role'] ?? 'MEMBRE').toUpperCase(),
+            textAlign: TextAlign.center,
             style: TextStyle(
               color: ajemBlue,
               fontWeight: FontWeight.bold,
@@ -312,7 +357,7 @@ class MemberCard extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Text(
-        '${member['niveau'] ?? ''} - ${member['mention'] ?? ''}',
+        '${widget.member['niveau'] ?? ''} - ${widget.member['mention'] ?? ''}',
         textAlign: TextAlign.center,
         style: const TextStyle(
           color: Color(0xFF7A8A99),
@@ -323,28 +368,32 @@ class MemberCard extends StatelessWidget {
     );
   }
 
+  // ✅ ID dans la section BLANCHE avec couleurs appropriées
   Widget _buildID() {
-    return RichText(
-      text: TextSpan(
-        children: [
-          TextSpan(
-            text: 'ID : ',
-            style: TextStyle(
-              color: ajemCyan,
-              fontSize: 17,
-              fontWeight: FontWeight.bold,
+    return Center(
+      child: RichText(
+        textAlign: TextAlign.center,
+        text: TextSpan(
+          children: [
+            const TextSpan(
+              text: 'ID : ',
+              style: TextStyle(
+                color: Color(0xFF2C3E50), // Gris foncé pour fond blanc
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+              ),
             ),
-          ),
-          TextSpan(
-            text: member['id']?.toString().padLeft(12, '0') ?? '000000000000',
-            style: TextStyle(
-              color: ajemCyan,
-              fontSize: 17,
-              fontWeight: FontWeight.bold,
-              letterSpacing: 1.8,
+            TextSpan(
+              text: widget.member['id']?.toString().padLeft(12, '0') ?? '000000000000',
+              style: const TextStyle(
+                color: Color(0xFF0099FF), // Bleu vif pour contraste
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 1.5,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -378,14 +427,14 @@ class MemberCard extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 12),
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 20),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
           child: Text(
-            "« Ndao handray andraikitra, hitondra fampandrosoana ! »",
+            _companySlogan,
             textAlign: TextAlign.center,
-            style: TextStyle(
+            style: const TextStyle(
               fontStyle: FontStyle.italic,
-              color: ui.Color.fromARGB(255, 244, 245, 245), // ou Colors.black87 pour plus de contraste
+              color: Color.fromARGB(255, 244, 245, 245),
               fontSize: 13,
               height: 1.3,
             ),
@@ -397,12 +446,12 @@ class MemberCard extends StatelessWidget {
 
   String _generateQRData() {
     return '''
-ID:${member['id']}
-NOM:${member['name'] ?? ''} ${member['prenom'] ?? ''}
-ROLE:${member['role'] ?? 'MEMBRE'}
-NIVEAU:${member['niveau'] ?? ''} - ${member['mention'] ?? ''}
-ETABL:${member['etablissement'] ?? ''}
-ASSO:AJEM Mahasoabe
+ID:${widget.member['id']}
+NOM:${widget.member['name'] ?? ''} ${widget.member['prenom'] ?? ''}
+ROLE:${widget.member['role'] ?? 'MEMBRE'}
+NIVEAU:${widget.member['niveau'] ?? ''} - ${widget.member['mention'] ?? ''}
+ETABL:${widget.member['etablissement'] ?? ''}
+ASSO:$_companyAcronym
 ''';
   }
 }
@@ -414,20 +463,12 @@ class VShapeClipper extends CustomClipper<Path> {
   @override
   Path getClip(Size size) {
     final path = Path();
-
-    // Commence en haut à gauche
     path.lineTo(0, 0);
-    // Ligne du haut
     path.lineTo(size.width, 0);
-    // Côté droit
     path.lineTo(size.width, size.height * 0.68);
-    // Pointe du V (au centre bas)
     path.lineTo(size.width / 2, size.height);
-    // Côté gauche
     path.lineTo(0, size.height * 0.68);
-    // Fermer
     path.close();
-
     return path;
   }
 
@@ -442,20 +483,12 @@ class InvertedVShapeClipper extends CustomClipper<Path> {
   @override
   Path getClip(Size size) {
     final path = Path();
-
-    // Commence au centre haut (pointe du V inversé)
     path.moveTo(size.width / 2, 0);
-    // Ligne vers le coin bas droit
     path.lineTo(size.width, size.height * 0.38);
-    // Côté droit vers le bas
     path.lineTo(size.width, size.height);
-    // Ligne du bas
     path.lineTo(0, size.height);
-    // Côté gauche vers le haut
     path.lineTo(0, size.height * 0.38);
-    // Retour au centre
     path.close();
-
     return path;
   }
 

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:io';
+import '../services/announcement_service.dart';
 
 class AcceuilScreen extends StatefulWidget {
   final VoidCallback? onNavigateToConnexion;
@@ -13,16 +14,33 @@ class AcceuilScreen extends StatefulWidget {
 
 class _AcceuilScreenState extends State<AcceuilScreen> {
   String? _appLogoPath;
+  String _companyName = "CORE LEDGER"; // 🔥 Valeur par défaut
+  String _companySlogan = "Une solution globale de gestion pour piloter vos actifs avec une précision absolue."; // 🔥 Valeur par défaut
+  
   int _unreadAnnouncementsCount = 0;
+  final AnnouncementService _announcementService = AnnouncementService();
+  int _lastReadCount = 0;
 
   @override
   void initState() {
     super.initState();
     _loadLogo();
-    _loadUnreadCount();
+    _loadCompanyInfo(); // 🔥 Charger les infos de la compagnie
+    _loadLastReadCount();
+    
+    _announcementService.startListening();
+    
+    _announcementService.announcementsStream.listen((announcements) {
+      _updateUnreadCount(announcements.length);
+    });
   }
 
-  // Charger le logo depuis SharedPreferences
+  @override
+  void dispose() {
+    _announcementService.stopListening();
+    super.dispose();
+  }
+
   Future<void> _loadLogo() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
@@ -30,25 +48,37 @@ class _AcceuilScreenState extends State<AcceuilScreen> {
     });
   }
 
-  // Charger le nombre d'annonces non lues
-  Future<void> _loadUnreadCount() async {
+  // 🔥 Charger le nom et le slogan de la compagnie
+  Future<void> _loadCompanyInfo() async {
     final prefs = await SharedPreferences.getInstance();
-    final announcements = prefs.getStringList('announcements') ?? [];
-    final lastReadCount = prefs.getInt('last_read_announcements_count') ?? 0;
-    
     setState(() {
-      _unreadAnnouncementsCount = announcements.length - lastReadCount;
+      _companyName = prefs.getString('company_name') ?? "CORE LEDGER";
+      _companySlogan = prefs.getString('company_slogan') ?? 
+          "Une solution globale de gestion pour piloter vos actifs avec une précision absolue.";
+    });
+  }
+
+  Future<void> _loadLastReadCount() async {
+    final prefs = await SharedPreferences.getInstance();
+    _lastReadCount = prefs.getInt('last_read_announcements_count') ?? 0;
+    
+    final announcements = prefs.getStringList('announcements') ?? [];
+    _updateUnreadCount(announcements.length);
+  }
+
+  void _updateUnreadCount(int totalCount) {
+    setState(() {
+      _unreadAnnouncementsCount = totalCount - _lastReadCount;
       if (_unreadAnnouncementsCount < 0) _unreadAnnouncementsCount = 0;
     });
   }
 
-  // Afficher les annonces
   Future<void> _showAnnouncements() async {
     final prefs = await SharedPreferences.getInstance();
     final announcements = prefs.getStringList('announcements') ?? [];
     
-    // Marquer comme lu
     await prefs.setInt('last_read_announcements_count', announcements.length);
+    _lastReadCount = announcements.length;
     setState(() {
       _unreadAnnouncementsCount = 0;
     });
@@ -68,8 +98,17 @@ class _AcceuilScreenState extends State<AcceuilScreen> {
         content: SizedBox(
           width: double.maxFinite,
           height: 400,
-          child: announcements.isEmpty
-              ? const Center(
+          child: StreamBuilder<List<Map<String, dynamic>>>(
+            stream: _announcementService.announcementsStream,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+
+              final announcements = snapshot.data ?? [];
+
+              if (announcements.isEmpty) {
+                return const Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
@@ -85,66 +124,68 @@ class _AcceuilScreenState extends State<AcceuilScreen> {
                       ),
                     ],
                   ),
-                )
-              : ListView.builder(
-                  itemCount: announcements.length,
-                  itemBuilder: (context, index) {
-                    final parts = announcements[index].split('|');
-                    final timestamp = parts[0];
-                    final message = parts.length > 1 ? parts[1] : announcements[index];
-                    
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      elevation: 2,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.all(15),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(8),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFF0163D2).withOpacity(0.1),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: const Icon(
-                                    Icons.campaign,
-                                    color: Color(0xFF0163D2),
-                                    size: 20,
-                                  ),
+                );
+              }
+
+              return ListView.builder(
+                itemCount: announcements.length,
+                itemBuilder: (context, index) {
+                  final announcement = announcements[index];
+                  
+                  return Card(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    elevation: 2,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(15),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF0163D2).withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(8),
                                 ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: Text(
-                                    timestamp,
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.grey[600],
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
+                                child: const Icon(
+                                  Icons.campaign,
+                                  color: Color(0xFF0163D2),
+                                  size: 20,
                                 ),
-                              ],
-                            ),
-                            const SizedBox(height: 12),
-                            Text(
-                              message,
-                              style: const TextStyle(
-                                fontSize: 14,
-                                height: 1.5,
                               ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  announcement['timestamp'],
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey[600],
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            announcement['message'],
+                            style: const TextStyle(
+                              fontSize: 14,
+                              height: 1.5,
                             ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
-                    );
-                  },
-                ),
+                    ),
+                  );
+                },
+              );
+            },
+          ),
         ),
         actions: [
           TextButton(
@@ -164,7 +205,6 @@ class _AcceuilScreenState extends State<AcceuilScreen> {
         children: [
           _buildBackgroundAura(),
           
-          // Bouton de notification en haut à droite
           SafeArea(
             child: Positioned(
               top: 20,
@@ -197,7 +237,6 @@ class _AcceuilScreenState extends State<AcceuilScreen> {
     );
   }
 
-  // Bouton de notification avec badge
   Widget _buildNotificationButton() {
     return GestureDetector(
       onTap: _showAnnouncements,
@@ -300,9 +339,10 @@ class _AcceuilScreenState extends State<AcceuilScreen> {
           ),
         ),
         const SizedBox(height: 15),
-        const Text(
-          "CORE LEDGER",
-          style: TextStyle(
+        // 🔥 Nom dynamique de la compagnie
+        Text(
+          _companyName.toUpperCase(),
+          style: const TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.w800,
             color: Color(0xFF1E293B),
@@ -384,10 +424,15 @@ class _AcceuilScreenState extends State<AcceuilScreen> {
           ),
         ),
         const SizedBox(height: 20),
-        const Text(
-          "Une solution globale de gestion pour piloter vos actifs avec une précision absolue.",
+        // 🔥 Slogan dynamique
+        Text(
+          _companySlogan,
           textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 15, color: Color(0xFF94A3B8), height: 1.5),
+          style: const TextStyle(
+            fontSize: 15,
+            color: Color(0xFF94A3B8),
+            height: 1.5,
+          ),
         ),
       ],
     );

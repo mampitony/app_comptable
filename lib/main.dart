@@ -1,11 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'database/database_helper.dart';
 import 'navigation/app_navigator.dart';
-import 'navigation/user_navigator.dart';
+import 'providers/theme_provider.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const MyApp());
+  runApp(
+    // 🔥 Wrapper avec ChangeNotifierProvider
+    ChangeNotifierProvider(
+      create: (_) => ThemeProvider(),
+      child: const MyApp(),
+    ),
+  );
 }
 
 class MyApp extends StatefulWidget {
@@ -54,9 +61,20 @@ class _MyAppState extends State<MyApp> {
       );
     }
 
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      home: AppNavigator(), // notre widget de navigation
+    // 🔥 Utiliser Consumer pour écouter les changements de thème
+    return Consumer<ThemeProvider>(
+      builder: (context, themeProvider, child) {
+        return MaterialApp(
+          debugShowCheckedModeBanner: false,
+          
+          // 🔥 Application des thèmes dynamiques
+          theme: themeProvider.lightTheme,
+          darkTheme: themeProvider.darkTheme,
+          themeMode: themeProvider.isDarkMode ? ThemeMode.dark : ThemeMode.light,
+          
+          home: AppNavigator(), // notre widget de navigation
+        );
+      },
     );
   }
 }

@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:provider/provider.dart';
+import '../providers/theme_provider.dart';
 
 class ConfigurationScreen extends StatefulWidget {
   const ConfigurationScreen({Key? key}) : super(key: key);
@@ -15,7 +17,11 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
   bool _notificationsEnabled = true;
   bool _darkModeEnabled = false;
   String? _appLogoPath;
+
+  final TextEditingController _companyNameController = TextEditingController();
+  final TextEditingController _companySloganController = TextEditingController();
   final TextEditingController _announcementController = TextEditingController();
+  final TextEditingController _companyAcronymController = TextEditingController();
 
   @override
   void initState() {
@@ -25,21 +31,27 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
 
   @override
   void dispose() {
+    _companyNameController.dispose();
+    _companyAcronymController.dispose();
+    _companySloganController.dispose();
     _announcementController.dispose();
     super.dispose();
   }
 
-  // Charger les paramètres sauvegardés
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
       _notificationsEnabled = prefs.getBool('notifications_enabled') ?? true;
       _darkModeEnabled = prefs.getBool('dark_mode_enabled') ?? false;
       _appLogoPath = prefs.getString('app_logo_path');
+
+      _companyNameController.text = prefs.getString('company_name') ?? 'CORE LEDGER';
+      _companyAcronymController.text = prefs.getString('company_acronym') ?? 'AJEM';
+      _companySloganController.text = prefs.getString('company_slogan') ??
+          '« Ndao handray andraikitra, hitondra fampandrosoana ! »';
     });
   }
 
-  // Sauvegarder un paramètre
   Future<void> _saveSetting(String key, dynamic value) async {
     final prefs = await SharedPreferences.getInstance();
     if (value is bool) {
@@ -49,7 +61,112 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
     }
   }
 
-  // Sélectionner le logo de l'application
+  void _showCompanyInfoDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Informations de l\'entreprise'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: _companyNameController,
+                decoration: InputDecoration(
+                  labelText: 'Nom de l\'entreprise',
+                  hintText: 'Ex: CORE LEDGER',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  prefixIcon: const Icon(Icons.business),
+                ),
+              ),
+              const SizedBox(height: 15),
+              TextField(
+                controller: _companyAcronymController,
+                textCapitalization: TextCapitalization.characters,
+                maxLength: 10,
+                decoration: InputDecoration(
+                  labelText: 'Acronyme',
+                  hintText: 'Ex: AJEM, CL, ABC',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  prefixIcon: const Icon(Icons.short_text),
+                  helperText: 'Version courte du nom (max 10 caractères)',
+                ),
+              ),
+              TextField(
+                controller: _companySloganController,
+                maxLines: 3,
+                decoration: InputDecoration(
+                  labelText: 'Slogan',
+                  hintText: 'Décrivez votre entreprise...',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  prefixIcon: const Icon(Icons.format_quote),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Annuler'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              _saveCompanyInfo();
+              Navigator.pop(context);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF0163D2),
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Enregistrer'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _saveCompanyInfo() async {
+    final name = _companyNameController.text.trim();
+    final acronym = _companyAcronymController.text.trim();
+    final slogan = _companySloganController.text.trim();
+
+    if (name.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Le nom de l\'entreprise ne peut pas être vide'),
+        ),
+      );
+      return;
+    }
+
+    if (acronym.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('L\'acronyme ne peut pas être vide')),
+      );
+      return;
+    }
+
+    await _saveSetting('company_name', name);
+    await _saveSetting('company_acronym', acronym);
+    await _saveSetting('company_slogan', slogan);
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Informations mises à jour avec succès'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    }
+  }
+
   Future<void> _pickAppLogo() async {
     final ImagePicker picker = ImagePicker();
     final XFile? result = await picker.pickImage(
@@ -71,7 +188,6 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
     }
   }
 
-  // Supprimer le logo
   Future<void> _removeAppLogo() async {
     setState(() {
       _appLogoPath = null;
@@ -80,13 +196,12 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
     await prefs.remove('app_logo_path');
 
     if (mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Logo supprimé')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Logo supprimé')),
+      );
     }
   }
 
-  // Afficher le dialog pour créer une annonce
   void _showAnnouncementDialog() {
     _announcementController.clear();
 
@@ -140,22 +255,20 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
     );
   }
 
-  // Publier l'annonce
   Future<void> _publishAnnouncement() async {
     final announcement = _announcementController.text.trim();
 
     if (announcement.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('L\'annonce est vide')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('L\'annonce est vide')),
+      );
       return;
     }
 
     try {
       final prefs = await SharedPreferences.getInstance();
       final now = DateTime.now();
-      final timestamp =
-          '${now.day}/${now.month}/${now.year} ${now.hour}:${now.minute}';
+      final timestamp = '${now.day}/${now.month}/${now.year} ${now.hour}:${now.minute}';
 
       List<String> announcements = prefs.getStringList('announcements') ?? [];
       announcements.insert(0, '$timestamp|$announcement');
@@ -165,8 +278,6 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
       }
 
       await prefs.setStringList('announcements', announcements);
-
-      // Réinitialiser le compteur pour montrer la nouvelle annonce comme non lue
       await prefs.setInt('last_read_announcements_count', 0);
 
       if (mounted) {
@@ -179,20 +290,13 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Erreur: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erreur: $e')),
+        );
       }
     }
   }
 
-  // Réinitialiser le compteur d'annonces non lues
-  Future<void> _resetUnreadCount() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt('last_read_announcements_count', 0);
-  }
-
-  // Afficher les annonces existantes
   void _viewAnnouncements() async {
     final prefs = await SharedPreferences.getInstance();
     final announcements = prefs.getStringList('announcements') ?? [];
@@ -221,9 +325,7 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
                   itemBuilder: (context, index) {
                     final parts = announcements[index].split('|');
                     final timestamp = parts[0];
-                    final message = parts.length > 1
-                        ? parts[1]
-                        : announcements[index];
+                    final message = parts.length > 1 ? parts[1] : announcements[index];
 
                     return Card(
                       margin: const EdgeInsets.only(bottom: 10),
@@ -259,7 +361,6 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
     );
   }
 
-  // Supprimer une annonce
   Future<void> _deleteAnnouncement(int index) async {
     final prefs = await SharedPreferences.getInstance();
     List<String> announcements = prefs.getStringList('announcements') ?? [];
@@ -269,15 +370,18 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
       await prefs.setStringList('announcements', announcements);
 
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Annonce supprimée')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Annonce supprimée')),
+        );
       }
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    // 🔥 Accéder au ThemeProvider
+    final themeProvider = Provider.of<ThemeProvider>(context);
+
     return Scaffold(
       body: Container(
         padding: const EdgeInsets.all(20),
@@ -291,7 +395,37 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
               ),
               const SizedBox(height: 30),
 
-              // ✅ Section Logo de l'application
+              _buildSectionTitle('Informations de l\'entreprise'),
+              Card(
+                child: Column(
+                  children: [
+                    ListTile(
+                      leading: const Icon(Icons.business, color: Color(0xFF0163D2)),
+                      title: Text(_companyNameController.text),
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Acronyme: ${_companyAcronymController.text}',
+                            style: const TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            _companySloganController.text,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                      trailing: const Icon(Icons.edit, size: 20),
+                      onTap: _showCompanyInfoDialog,
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 30),
+
               _buildSectionTitle('Logo de l\'application'),
               Card(
                 child: Padding(
@@ -344,9 +478,7 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
                           ElevatedButton.icon(
                             onPressed: _pickAppLogo,
                             icon: const Icon(Icons.upload),
-                            label: Text(
-                              _appLogoPath == null ? 'Ajouter' : 'Modifier',
-                            ),
+                            label: Text(_appLogoPath == null ? 'Ajouter' : 'Modifier'),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: const Color(0xFF0163D2),
                               foregroundColor: Colors.white,
@@ -372,16 +504,12 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
 
               const SizedBox(height: 30),
 
-              // ✅ Section Annonces
               _buildSectionTitle('Annonces'),
               Card(
                 child: Column(
                   children: [
                     ListTile(
-                      leading: const Icon(
-                        Icons.campaign,
-                        color: Color(0xFF0163D2),
-                      ),
+                      leading: const Icon(Icons.campaign, color: Color(0xFF0163D2)),
                       title: const Text('Créer une annonce'),
                       subtitle: const Text('Informer tous les membres'),
                       trailing: const Icon(Icons.arrow_forward_ios, size: 16),
@@ -401,7 +529,6 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
 
               const SizedBox(height: 30),
 
-              // Section Notifications
               _buildSectionTitle('Notifications'),
               _buildSwitchTile(
                 title: 'Activer les notifications',
@@ -415,34 +542,22 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
 
               const Divider(height: 40),
 
-              // Section Apparence
               _buildSectionTitle('Apparence'),
-              _buildSwitchTile(
-                title: 'Mode sombre',
-                subtitle: 'Activer le thème sombre',
-                value: _darkModeEnabled,
+              // 🔥 Mode sombre fonctionnel avec Provider
+              SwitchListTile(
+                title: const Text('Mode sombre'),
+                subtitle: const Text('Activer le thème sombre'),
+                value: themeProvider.isDarkMode,
                 onChanged: (value) {
                   setState(() => _darkModeEnabled = value);
-                  _saveSetting('dark_mode_enabled', value);
+                  themeProvider.toggleTheme(value);
                 },
+                activeColor: const Color(0xFF0163D2),
               ),
 
               const Divider(height: 40),
 
-              // Section Actions
               _buildSectionTitle('Actions'),
-              ListTile(
-                leading: const Icon(
-                  Icons.cleaning_services,
-                  color: Colors.orange,
-                ),
-                title: const Text('Vider le cache'),
-                onTap: () {
-                  ScaffoldMessenger.of(
-                    context,
-                  ).showSnackBar(const SnackBar(content: Text('Cache vidé')));
-                },
-              ),
               ListTile(
                 leading: const Icon(Icons.logout, color: Colors.red),
                 title: const Text('Déconnexion'),
