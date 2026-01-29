@@ -122,7 +122,7 @@ class _RevenuScreenState extends State<RevenuScreen> {
     );
   }
 
-  // --- LISTE DES REVENUS ---
+  // --- LISTE DES REVENUS (CORRIGÉE) ---
   Widget _buildRevenuCard(Map<String, dynamic> item) {
     bool isCotisation = item['type'] == 'Cotisation';
     
@@ -156,6 +156,7 @@ class _RevenuScreenState extends State<RevenuScreen> {
         trailing: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.end,
+          mainAxisSize: MainAxisSize.min, // 🔥 CORRECTION
           children: [
             Text(
               "+ ${item['montant']} Ar",
@@ -164,20 +165,24 @@ class _RevenuScreenState extends State<RevenuScreen> {
                   fontWeight: FontWeight.bold,
                   fontSize: 16),
             ),
-            if (widget.canEdit)
+            if (widget.canEdit) ...[
+              const SizedBox(height: 4), // 🔥 Espacement
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  IconButton(
-                    icon: const Icon(Icons.edit_note, color: Colors.blue),
-                    onPressed: () => _openModal(item: item),
+                  // 🔥 CORRECTION : GestureDetector au lieu de IconButton
+                  GestureDetector(
+                    onTap: () => _openModal(item: item),
+                    child: const Icon(Icons.edit_note, color: Colors.blue, size: 20),
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.delete_sweep, color: Colors.redAccent),
-                    onPressed: () => _deleteRevenu(item),
+                  const SizedBox(width: 8),
+                  GestureDetector(
+                    onTap: () => _deleteRevenu(item),
+                    child: const Icon(Icons.delete_sweep, color: Colors.redAccent, size: 20),
                   ),
                 ],
-              )
+              ),
+            ]
           ],
         ),
       ),
@@ -224,22 +229,34 @@ class _RevenuScreenState extends State<RevenuScreen> {
     );
   }
 
-  // --- LOGIQUE DU MODAL (CONSERVÉE ET SÉCURISÉE) ---
+  // --- LOGIQUE DU MODAL AMÉLIORÉ ---
   void _openModal({Map<String, dynamic>? item}) {
     if (!widget.canEdit) return;
 
     String dateRevenu = item?['date'] ?? '';
     String montantRevenu = item?['montant']?.toString() ?? '';
     String typeRevenu = item?['type'] ?? 'Cotisation';
+    
+    // 🔹 COTISATION
     String typeCotisation = 'Mensuel';
+    String autreCotisation = '';
     int? membreId;
     String? membreNom;
-    String description = item?['motif'] ?? '';
+    
+    // 🔹 DON
+    String nomAuteurDon = '';
+    String descriptionDon = '';
+    
+    // 🔹 SUBVENTION
+    String nomSubvention = '';
+    String descriptionSubvention = '';
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(25))),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(25))
+      ),
       builder: (ctx) => StatefulBuilder(
         builder: (context, setModalState) {
           return Padding(
@@ -251,18 +268,40 @@ class _RevenuScreenState extends State<RevenuScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Container(width: 50, height: 5, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10))),
-                  const SizedBox(height: 20),
-                  Text(item != null ? 'Modifier l\'entrée' : 'Ajouter un Revenu', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                  // Barre indicateur
+                  Container(
+                    width: 50,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: Colors.grey[300],
+                      borderRadius: BorderRadius.circular(10)
+                    )
+                  ),
                   const SizedBox(height: 20),
                   
-                  // Date Picker
+                  // Titre
+                  Text(
+                    item != null ? 'Modifier l\'entrée' : 'Ajouter un Revenu',
+                    style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)
+                  ),
+                  const SizedBox(height: 20),
+                  
+                  // 📅 Date Picker
                   TextField(
                     readOnly: true,
                     controller: TextEditingController(text: dateRevenu),
-                    decoration: const InputDecoration(labelText: "Date *", prefixIcon: Icon(Icons.calendar_today)),
+                    decoration: InputDecoration(
+                      labelText: "Date *",
+                      prefixIcon: const Icon(Icons.calendar_today),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
                     onTap: () async {
-                      final picked = await showDatePicker(context: context, initialDate: DateTime.now(), firstDate: DateTime(2020), lastDate: DateTime(2100));
+                      final picked = await showDatePicker(
+                        context: context,
+                        initialDate: DateTime.now(),
+                        firstDate: DateTime(2020),
+                        lastDate: DateTime(2100)
+                      );
                       if (picked != null) {
                         setModalState(() => dateRevenu = "${picked.day}/${picked.month}/${picked.year}");
                       }
@@ -270,49 +309,183 @@ class _RevenuScreenState extends State<RevenuScreen> {
                   ),
                   const SizedBox(height: 15),
 
-                  // Type Dropdown
+                  // 🎯 Type Dropdown
                   DropdownButtonFormField<String>(
                     value: typeRevenu,
-                    items: ['Cotisation', 'Don', 'Subvention'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-                    onChanged: (val) => setModalState(() => typeRevenu = val!),
-                    decoration: const InputDecoration(labelText: "Type de revenu"),
+                    decoration: InputDecoration(
+                      labelText: "Type de revenu",
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    items: ['Cotisation', 'Don', 'Subvention']
+                      .map((e) => DropdownMenuItem(value: e, child: Text(e)))
+                      .toList(),
+                    onChanged: (val) => setModalState(() {
+                      typeRevenu = val!;
+                      // Réinitialiser les champs spécifiques
+                      typeCotisation = 'Mensuel';
+                      autreCotisation = '';
+                      nomAuteurDon = '';
+                      descriptionDon = '';
+                      nomSubvention = '';
+                      descriptionSubvention = '';
+                    }),
                   ),
                   
+                  // 🔹 CHAMPS SPÉCIFIQUES SELON LE TYPE
+                  
+                  // ========== COTISATION ==========
                   if (typeRevenu == 'Cotisation') ...[
                     const SizedBox(height: 15),
+                    
+                    // Sélection membre
                     DropdownButtonFormField<int>(
                       isExpanded: true,
                       value: membreId,
                       hint: const Text("Sélectionner le membre"),
+                      decoration: InputDecoration(
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
                       items: membres.map((m) => DropdownMenuItem<int>(
                         value: m['id'],
-                        child: Text("${m['name']} ${m['prenom']}"),
+                        child: Text("${m['name']} ${m['prenom'] ?? ''}"),
                       )).toList(),
                       onChanged: (val) {
                         final m = membres.firstWhere((element) => element['id'] == val);
                         setModalState(() {
                           membreId = val;
-                          membreNom = "${m['name']} ${m['prenom']}";
+                          membreNom = "${m['name']} ${m['prenom'] ?? ''}";
                         });
                       },
+                    ),
+                    const SizedBox(height: 15),
+                    
+                    // Type de cotisation
+                    DropdownButtonFormField<String>(
+                      value: typeCotisation,
+                      decoration: InputDecoration(
+                        labelText: "Type de cotisation",
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      items: ['Mensuel', 'Annuel', 'Droit d\'adhésion', 'Autre']
+                        .map((e) => DropdownMenuItem(value: e, child: Text(e)))
+                        .toList(),
+                      onChanged: (val) => setModalState(() => typeCotisation = val!),
+                    ),
+                    
+                    // Si "Autre" est sélectionné
+                    if (typeCotisation == 'Autre') ...[
+                      const SizedBox(height: 15),
+                      TextField(
+                        decoration: InputDecoration(
+                          labelText: "Préciser le type de cotisation",
+                          prefixIcon: const Icon(Icons.edit),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        onChanged: (val) => autreCotisation = val,
+                      ),
+                    ],
+                  ],
+                  
+                  // ========== DON ==========
+                  if (typeRevenu == 'Don') ...[
+                    const SizedBox(height: 15),
+                    
+                    // Nom de l'auteur
+                    TextField(
+                      decoration: InputDecoration(
+                        labelText: "Nom de l'auteur du don *",
+                        prefixIcon: const Icon(Icons.person),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      onChanged: (val) => nomAuteurDon = val,
+                    ),
+                    const SizedBox(height: 15),
+                    
+                    // Description
+                    TextField(
+                      maxLines: 3,
+                      decoration: InputDecoration(
+                        labelText: "Description",
+                        prefixIcon: const Icon(Icons.description),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      onChanged: (val) => descriptionDon = val,
+                    ),
+                  ],
+                  
+                  // ========== SUBVENTION ==========
+                  if (typeRevenu == 'Subvention') ...[
+                    const SizedBox(height: 15),
+                    
+                    // Nom de la subvention
+                    TextField(
+                      decoration: InputDecoration(
+                        labelText: "Nom de la subvention *",
+                        prefixIcon: const Icon(Icons.business),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      onChanged: (val) => nomSubvention = val,
+                    ),
+                    const SizedBox(height: 15),
+                    
+                    // Description
+                    TextField(
+                      maxLines: 3,
+                      decoration: InputDecoration(
+                        labelText: "Description",
+                        prefixIcon: const Icon(Icons.description),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      onChanged: (val) => descriptionSubvention = val,
                     ),
                   ],
 
                   const SizedBox(height: 15),
+                  
+                  // 💰 Montant
                   TextField(
                     keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(labelText: "Montant (Ar) *", prefixIcon: Icon(Icons.money)),
+                    controller: TextEditingController(text: montantRevenu)
+                      ..selection = TextSelection.collapsed(offset: montantRevenu.length),
+                    decoration: InputDecoration(
+                      labelText: "Montant (Ar) *",
+                      prefixIcon: const Icon(Icons.money),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
                     onChanged: (val) => montantRevenu = val,
                   ),
                   
                   const SizedBox(height: 30),
+                  
+                  // Bouton Enregistrer
                   SizedBox(
                     width: double.infinity,
                     height: 50,
                     child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0D47A1), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-                      onPressed: () => _submitData(item?['id'], typeRevenu, dateRevenu, montantRevenu, description, membreNom, typeCotisation),
-                      child: const Text("Enregistrer", style: TextStyle(color: Colors.white, fontSize: 16)),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF0D47A1),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
+                      ),
+                      onPressed: () => _submitData(
+                        item?['id'],
+                        typeRevenu,
+                        dateRevenu,
+                        montantRevenu,
+                        // COTISATION
+                        membreNom,
+                        typeCotisation,
+                        autreCotisation,
+                        // DON
+                        nomAuteurDon,
+                        descriptionDon,
+                        // SUBVENTION
+                        nomSubvention,
+                        descriptionSubvention,
+                      ),
+                      child: const Text(
+                        "Enregistrer",
+                        style: TextStyle(color: Colors.white, fontSize: 16)
+                      ),
                     ),
                   ),
                   const SizedBox(height: 20),
@@ -325,35 +498,137 @@ class _RevenuScreenState extends State<RevenuScreen> {
     );
   }
 
-  // --- SAUVEGARDE ---
-  Future<void> _submitData(int? id, String type, String date, String montantStr, String desc, String? mNom, String tCotis) async {
+  // --- SAUVEGARDE AVEC TOUS LES CHAMPS ---
+  Future<void> _submitData(
+    int? id,
+    String type,
+    String date,
+    String montantStr,
+    // Cotisation
+    String? membreNom,
+    String typeCotisation,
+    String autreCotisation,
+    // Don
+    String nomAuteurDon,
+    String descriptionDon,
+    // Subvention
+    String nomSubvention,
+    String descriptionSubvention,
+  ) async {
+    // Validation
     if (date.isEmpty || montantStr.isEmpty) {
-      _showAlert("Erreur", "Champs obligatoires manquants");
+      _showAlert("Erreur", "Date et montant sont obligatoires");
+      return;
+    }
+
+    // Validations spécifiques
+    if (type == 'Cotisation' && membreNom == null) {
+      _showAlert("Erreur", "Veuillez sélectionner un membre");
+      return;
+    }
+    
+    if (type == 'Cotisation' && typeCotisation == 'Autre' && autreCotisation.trim().isEmpty) {
+      _showAlert("Erreur", "Veuillez préciser le type de cotisation");
+      return;
+    }
+
+    if (type == 'Don' && nomAuteurDon.trim().isEmpty) {
+      _showAlert("Erreur", "Le nom de l'auteur du don est obligatoire");
+      return;
+    }
+
+    if (type == 'Subvention' && nomSubvention.trim().isEmpty) {
+      _showAlert("Erreur", "Le nom de la subvention est obligatoire");
       return;
     }
     
     double montant = double.tryParse(montantStr) ?? 0;
-    String motifFinal = (type == 'Cotisation') ? "Cotisation $tCotis - $mNom" : desc;
+    String motifFinal = '';
+
+    // Construire le motif selon le type
+    if (type == 'Cotisation') {
+      String typeCotisationFinal = typeCotisation == 'Autre' ? autreCotisation : typeCotisation;
+      motifFinal = "Cotisation $typeCotisationFinal - $membreNom";
+    } else if (type == 'Don') {
+      motifFinal = "Don de $nomAuteurDon${descriptionDon.isNotEmpty ? ' - $descriptionDon' : ''}";
+    } else if (type == 'Subvention') {
+      motifFinal = "Subvention: $nomSubvention${descriptionSubvention.isNotEmpty ? ' - $descriptionSubvention' : ''}";
+    }
 
     try {
       if (id != null) {
-        await _revenuRepo.updateRevenu(id: id, type: type, date: date, montant: montant, motif: motifFinal);
+        await _revenuRepo.updateRevenu(
+          id: id,
+          type: type,
+          date: date,
+          montant: montant,
+          motif: motifFinal
+        );
       } else {
-        await _revenuRepo.addRevenu(type: type, date: date, montant: montant, motif: motifFinal);
+        await _revenuRepo.addRevenu(
+          type: type,
+          date: date,
+          montant: montant,
+          motif: motifFinal
+        );
       }
-      Navigator.pop(context);
-      loadRevenus();
+      
+      if (mounted) {
+        Navigator.pop(context);
+        _showAlert("Succès", id != null ? "Revenu modifié" : "Revenu ajouté");
+        loadRevenus();
+      }
     } catch (e) {
       _showAlert("Erreur", e.toString());
     }
   }
 
-  // --- FONCTIONS AUXILIAIRES ---
+  // --- SUPPRESSION ---
   Future<void> _deleteRevenu(Map<String, dynamic> item) async {
-    // Garde ton code de confirmation de suppression ici
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text("Confirmation"),
+        content: const Text("Voulez-vous vraiment supprimer ce revenu ?"),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text("Annuler"),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text("Supprimer", style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      try {
+        await _revenuRepo.deleteRevenu(item['id']);
+        _showAlert("Succès", "Revenu supprimé");
+        loadRevenus();
+      } catch (e) {
+        _showAlert("Erreur", e.toString());
+      }
+    }
   }
 
   void _showAlert(String title, String message) {
-    showDialog(context: context, builder: (ctx) => AlertDialog(title: Text(title), content: Text(message), actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("OK"))]));
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("OK"),
+          ),
+        ],
+      ),
+    );
   }
 }

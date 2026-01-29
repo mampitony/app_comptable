@@ -406,10 +406,10 @@ class _MemberCardState extends State<MemberCard> {
           padding: const EdgeInsets.symmetric(horizontal: 50),
           child: Container(
             padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: ajemCyan, width: 2),
-            ),
+            // decoration: BoxDecoration(
+            //   borderRadius: BorderRadius.circular(8),
+            //   border: Border.all(color: ajemCyan, width: 2),
+            // ),
             child: QrImageView(
               data: _generateQRData(),
               version: QrVersions.auto,

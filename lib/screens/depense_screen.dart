@@ -68,7 +68,7 @@ class _DepenseScreenState extends State<DepenseScreen> {
     _initDepenses();
   }
 
-  // --- LOGIQUE DE DONNÉES (CONSERVÉE) ---
+  // --- LOGIQUE DE DONNÉES ---
 
   Future<void> _initDepenses() async {
     try {
@@ -271,14 +271,331 @@ class _DepenseScreenState extends State<DepenseScreen> {
     );
   }
 
-  // --- RESTE DE TES MÉTHODES (FORMULAIRE, DATEPICKER, ETC.) À COPIER-COLLER ICI ---
-  // Note: Garde tes fonctions _handleSubmit, _handleDelete, _openModal exactement comme dans ton code original 
-  // pour ne perdre aucune logique métier.
-  
-  void _resetForm() { /* Ta logique originale */ }
-  void _openModal({Map<String, dynamic>? item}) { /* Ta logique originale */ }
-  Future<void> _handleSubmit() async { /* Ta logique originale */ }
-  Future<void> _handleDelete(dynamic id) async { /* Ta logique originale */ }
-  void _showAlert(String title, String message) { /* Ta logique originale */ }
-  Future<void> _pickDate({required Function(String) onSelected, String? initial}) async { /* Ta logique originale */ }
+  // 🔥 FONCTIONS MANQUANTES - À AJOUTER
+
+  void _resetForm() {
+    setState(() {
+      dateDepense = '';
+      montantDepense = '';
+      lieuDeplacement = '';
+      nombreParticipants = '';
+      nomProduit = '';
+      membreAcheteur = '';
+      typeCommunication = 'Crédit téléphone';
+      nomActivite = '';
+      dateDebutActivite = '';
+      dateFinActivite = '';
+      lieuActivite = '';
+      editItem = null;
+    });
+  }
+
+  void _openModal({Map<String, dynamic>? item}) {
+    if (item != null) {
+      // Mode édition
+      setState(() {
+        editItem = item;
+        typeDepense = item['type'] ?? sectionActive;
+        dateDepense = item['date'] ?? '';
+        montantDepense = (item['montant'] ?? '').toString();
+        
+        if (typeDepense == 'Déplacement') {
+          lieuDeplacement = item['lieu'] ?? '';
+          nombreParticipants = (item['nombreParticipants'] ?? '').toString();
+        } else if (typeDepense == 'Achat') {
+          nomProduit = item['nomProduit'] ?? '';
+          membreAcheteur = item['membreAcheteur'] ?? '';
+        } else if (typeDepense == 'Communication') {
+          typeCommunication = item['sousType'] ?? 'Crédit téléphone';
+        } else if (typeDepense == 'Activités') {
+          nomActivite = item['nomActivite'] ?? '';
+          dateDebutActivite = item['dateDebut'] ?? '';
+          dateFinActivite = item['dateFin'] ?? '';
+          lieuActivite = item['lieuActivite'] ?? '';
+        }
+      });
+    } else {
+      // Mode ajout
+      _resetForm();
+      setState(() => typeDepense = sectionActive);
+    }
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _buildModalContent(),
+    );
+  }
+
+  Widget _buildModalContent() {
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.85,
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(25),
+          topRight: Radius.circular(25),
+        ),
+      ),
+      child: Column(
+        children: [
+          // Header
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: const Color(0xFF0163D2),
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(25),
+                topRight: Radius.circular(25),
+              ),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  editItem == null ? "Nouvelle dépense" : "Modifier dépense",
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close, color: Colors.white),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ],
+            ),
+          ),
+          
+          // Formulaire
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                children: [
+                  _buildTextField("Date", dateDepense, (val) => setState(() => dateDepense = val), isDate: true),
+                  const SizedBox(height: 15),
+                  _buildTextField("Montant (Ar)", montantDepense, (val) => setState(() => montantDepense = val), isNumber: true),
+                  const SizedBox(height: 15),
+                  
+                  // Champs spécifiques selon le type
+                  if (typeDepense == 'Déplacement') ...[
+                    _buildTextField("Lieu", lieuDeplacement, (val) => setState(() => lieuDeplacement = val)),
+                    const SizedBox(height: 15),
+                    _buildTextField("Nombre participants", nombreParticipants, (val) => setState(() => nombreParticipants = val), isNumber: true),
+                  ],
+                  
+                  if (typeDepense == 'Achat') ...[
+                    _buildTextField("Nom du produit", nomProduit, (val) => setState(() => nomProduit = val)),
+                    const SizedBox(height: 15),
+                    _buildMembreDropdown(),
+                  ],
+                  
+                  if (typeDepense == 'Communication') ...[
+                    _buildCommunicationDropdown(),
+                  ],
+                  
+                  if (typeDepense == 'Activités') ...[
+                    _buildTextField("Nom activité", nomActivite, (val) => setState(() => nomActivite = val)),
+                    const SizedBox(height: 15),
+                    _buildTextField("Date début", dateDebutActivite, (val) => setState(() => dateDebutActivite = val), isDate: true),
+                    const SizedBox(height: 15),
+                    _buildTextField("Date fin", dateFinActivite, (val) => setState(() => dateFinActivite = val), isDate: true),
+                    const SizedBox(height: 15),
+                    _buildTextField("Lieu", lieuActivite, (val) => setState(() => lieuActivite = val)),
+                  ],
+                  
+                  const SizedBox(height: 30),
+                  
+                  // Bouton submit
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: ElevatedButton(
+                      onPressed: _handleSubmit,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF0163D2),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(15),
+                        ),
+                      ),
+                      child: Text(
+                        editItem == null ? "Enregistrer" : "Mettre à jour",
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTextField(String label, String value, Function(String) onChanged, {bool isDate = false, bool isNumber = false}) {
+    return TextField(
+      controller: TextEditingController(text: value)..selection = TextSelection.collapsed(offset: value.length),
+      onChanged: onChanged,
+      keyboardType: isNumber ? TextInputType.number : TextInputType.text,
+      readOnly: isDate,
+      onTap: isDate ? () => _pickDate(onSelected: onChanged, initial: value) : null,
+      decoration: InputDecoration(
+        labelText: label,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        suffixIcon: isDate ? const Icon(Icons.calendar_today) : null,
+      ),
+    );
+  }
+
+  Widget _buildMembreDropdown() {
+    return DropdownButtonFormField<String>(
+      value: membreAcheteur.isEmpty ? null : membreAcheteur,
+      decoration: InputDecoration(
+        labelText: "Membre acheteur",
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+      items: membres.map((m) {
+        final name = "${m['name']} ${m['prenom'] ?? ''}";
+        return DropdownMenuItem(value: name, child: Text(name));
+      }).toList(),
+      onChanged: (val) => setState(() => membreAcheteur = val ?? ''),
+    );
+  }
+
+  Widget _buildCommunicationDropdown() {
+    return DropdownButtonFormField<String>(
+      value: typeCommunication,
+      decoration: InputDecoration(
+        labelText: "Type communication",
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+      items: ['Crédit téléphone', 'Internet', 'Autre'].map((t) {
+        return DropdownMenuItem(value: t, child: Text(t));
+      }).toList(),
+      onChanged: (val) => setState(() => typeCommunication = val ?? 'Crédit téléphone'),
+    );
+  }
+
+  Future<void> _pickDate({required Function(String) onSelected, String? initial}) async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now(),
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+    );
+    if (picked != null) {
+      onSelected("${picked.year}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}");
+    }
+  }
+
+  Future<void> _handleSubmit() async {
+    if (dateDepense.isEmpty || montantDepense.isEmpty) {
+      _showAlert("Erreur", "Veuillez remplir tous les champs obligatoires");
+      return;
+    }
+
+    try {
+      final montant = double.tryParse(montantDepense) ?? 0;
+      
+      if (editItem == null) {
+        // Ajout
+        await _depenseRepo.addDepense(
+          type: typeDepense,
+          date: dateDepense,
+          montant: montant,
+          lieu: lieuDeplacement,
+          nombreParticipants: int.tryParse(nombreParticipants),
+          nomProduit: nomProduit,
+          membreAcheteur: membreAcheteur,
+          sousType: typeCommunication,
+          nomActivite: nomActivite,
+          dateDebut: dateDebutActivite,
+          dateFin: dateFinActivite,
+          lieuActivite: lieuActivite,
+        );
+        
+        // Historique
+        await _historiqueRepo.addHistorique(
+          typeOperation: 'Dépense',
+          operation: 'Ajout',
+          details: 'Dépense $typeDepense ajoutée',
+          montant: montant,
+        );
+      } else {
+        // Modification
+        await _depenseRepo.updateDepense(
+          id: editItem!['id'],
+          type: typeDepense,
+          date: dateDepense,
+          montant: montant,
+          lieu: lieuDeplacement,
+          nombreParticipants: int.tryParse(nombreParticipants),
+          nomProduit: nomProduit,
+          membreAcheteur: membreAcheteur,
+          sousType: typeCommunication,
+          nomActivite: nomActivite,
+          dateDebut: dateDebutActivite,
+          dateFin: dateFinActivite,
+          lieuActivite: lieuActivite,
+        );
+      }
+
+      await _loadDepensesFromDB();
+      if (mounted) {
+        Navigator.pop(context);
+        _showAlert("Succès", editItem == null ? "Dépense ajoutée" : "Dépense modifiée");
+      }
+    } catch (e) {
+      _showAlert("Erreur", e.toString());
+    }
+  }
+
+  Future<void> _handleDelete(dynamic id) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Confirmation"),
+        content: const Text("Voulez-vous vraiment supprimer cette dépense ?"),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("Annuler")),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text("Supprimer", style: TextStyle(color: Colors.red))),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      try {
+        await _depenseRepo.deleteDepense(id);
+        await _loadDepensesFromDB();
+        _showAlert("Succès", "Dépense supprimée");
+      } catch (e) {
+        _showAlert("Erreur", e.toString());
+      }
+    }
+  }
+
+  void _showAlert(String title, String message) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
 }
