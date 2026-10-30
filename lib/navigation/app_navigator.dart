@@ -138,7 +138,11 @@ class _ConnexionStackState extends State<_ConnexionStack> {
   Widget build(BuildContext context) {
     return Navigator(
       key: _navigatorKey,
-      initialRoute: '/home',
+      // 🔥 CORRIGÉ : un seul écran de connexion commun — on ne passe plus
+      // par HomeScreen (le sélecteur de portail Admin/Membre/Outils).
+      // HomeScreen reste disponible en tant qu'écran (non supprimé),
+      // simplement plus utilisée dans ce parcours.
+      initialRoute: '/auth',
       onPopPage: (route, result) {
         if (!route.didPop(result)) return false;
         widget.onNavigationChanged();
@@ -148,9 +152,15 @@ class _ConnexionStackState extends State<_ConnexionStack> {
         WidgetsBinding.instance.addPostFrameCallback((_) => _checkSubScreen(settings.name ?? ''));
         Widget page;
         switch (settings.name) {
-          case '/home': page = HomeScreen(onNavigateToAuth: (type) => _navigatorKey.currentState!.pushNamed('/auth', arguments: {'userType': type}), onNavigateToDebug: () => _navigatorKey.currentState!.pushNamed('/debug')); break;
-          case '/auth': page = AuthScreen(userType: (settings.arguments as Map)['userType'], onLoginAsAdmin: (u) => _navigatorKey.currentState!.pushNamed('/admin', arguments: u), onLoginAsUser: (u) => _navigatorKey.currentState!.pushNamed('/user', arguments: u)); break;
-          case '/admin': page = const AdminScreen(); break;
+          case '/home': page = HomeScreen(onNavigateToAuth: (type) => _navigatorKey.currentState!.pushNamed('/auth'), onNavigateToDebug: () => _navigatorKey.currentState!.pushNamed('/debug')); break;
+          case '/auth': page = AuthScreen(onLoginAsAdmin: (u) => _navigatorKey.currentState!.pushNamed('/admin', arguments: u), onLoginAsUser: (u) => _navigatorKey.currentState!.pushNamed('/user', arguments: u)); break;
+          case '/admin':
+            final args = settings.arguments as Map<String, dynamic>?;
+            page = AdminScreen(
+              userRole: args?['role']?.toString() ?? 'admin_principal_membre',
+              userData: args,
+            );
+            break;
           case '/user': page = const UserScreen(); break;
           case '/debug': page = const DebugScreen(); break;
           default: page = const AcceuilScreen();

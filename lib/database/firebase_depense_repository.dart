@@ -1,40 +1,39 @@
-// lib/database/depense_repository.dart
-import 'package:sqflite/sqflite.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../services/firebase_service.dart';
 
-import 'database_helper.dart';
+class FirebaseDepenseRepository {
+  final _firebase = FirebaseService.instance;
 
-class DepenseRepository {
-  final dbHelper = DatabaseHelper.instance;
-
-  // Total des dépenses
+  // Total des dépenses — INCHANGÉ
   Future<double> getTotalDepenses() async {
-    final db = await dbHelper.database;
-    final result =
-        await db.rawQuery('SELECT SUM(montant) as total FROM depenses');
-    if (result.isNotEmpty && result.first['total'] != null) {
-      return (result.first['total'] as num).toDouble();
+    final querySnapshot = await _firebase.depenses.get();
+    double total = 0;
+    for (var doc in querySnapshot.docs) {
+      final data = doc.data() as Map<String, dynamic>;
+      total += (data['montant'] ?? 0).toDouble();
     }
-    return 0.0;
+    return total;
   }
 
-  // Toutes les dépenses
+  // Toutes les dépenses — INCHANGÉ
   Future<List<Map<String, dynamic>>> getAllDepenses() async {
-    final db = await dbHelper.database;
-    return await db.query(
-      'depenses',
-      orderBy: 'date DESC',
-    );
+    final querySnapshot = await _firebase.depenses
+        .orderBy('date', descending: true)
+        .get();
+    return querySnapshot.docs.map((doc) {
+      return {'id': doc.id, ...doc.data() as Map<String, dynamic>};
+    }).toList();
   }
 
-  // Ajouter une dépense
-  Future<int> addDepense({
+  // Ajouter une dépense — ÉTENDU avec description
+  Future<String> addDepense({
     required String type,
     required String date,
     required double montant,
     String? lieu,
     int? nombreParticipants,
     String? nomProduit,
-    int? membreAcheteurId,
+    String? membreAcheteurId,
     String? membreAcheteur,
     String? typeCommunication,
     String? nomActivite,
@@ -42,9 +41,9 @@ class DepenseRepository {
     String? dateFin,
     String? lieuActivite,
     String? sousType,
+    String? description, // ---- NOUVEAU ----
   }) async {
-    final db = await dbHelper.database;
-    final data = {
+    final docRef = await _firebase.depenses.add({
       'type': type,
       'date': date,
       'montant': montant,
@@ -59,20 +58,22 @@ class DepenseRepository {
       'dateFin': dateFin,
       'lieuActivite': lieuActivite,
       'sousType': sousType,
-    };
-    return await db.insert('depenses', data);
+      'description': description, // ---- NOUVEAU ----
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+    return docRef.id;
   }
 
-  // Mettre à jour une dépense
-  Future<int> updateDepense({
-    required int id,
+  // Mettre à jour une dépense — ÉTENDU avec description
+  Future<void> updateDepense({
+    required String id,
     required String type,
     required String date,
     required double montant,
     String? lieu,
     int? nombreParticipants,
     String? nomProduit,
-    int? membreAcheteurId,
+    String? membreAcheteurId,
     String? membreAcheteur,
     String? typeCommunication,
     String? nomActivite,
@@ -80,9 +81,9 @@ class DepenseRepository {
     String? dateFin,
     String? lieuActivite,
     String? sousType,
+    String? description, // ---- NOUVEAU ----
   }) async {
-    final db = await dbHelper.database;
-    final data = {
+    await _firebase.depenses.doc(id).update({
       'type': type,
       'date': date,
       'montant': montant,
@@ -97,22 +98,13 @@ class DepenseRepository {
       'dateFin': dateFin,
       'lieuActivite': lieuActivite,
       'sousType': sousType,
-    };
-    return await db.update(
-      'depenses',
-      data,
-      where: 'id = ?',
-      whereArgs: [id],
-    );
+      'description': description, // ---- NOUVEAU ----
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
   }
 
-  // Supprimer une dépense
-  Future<int> deleteDepense(int id) async {
-    final db = await dbHelper.database;
-    return await db.delete(
-      'depenses',
-      where: 'id = ?',
-      whereArgs: [id],
-    );
+  // Supprimer une dépense — INCHANGÉ
+  Future<void> deleteDepense(String id) async {
+    await _firebase.depenses.doc(id).delete();
   }
 }

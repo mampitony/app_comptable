@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../database/user_repository.dart';
+import '../database/firebase_user_repository.dart';
 
 class DebugScreen extends StatefulWidget {
   const DebugScreen({super.key});
@@ -9,7 +9,7 @@ class DebugScreen extends StatefulWidget {
 }
 
 class _DebugScreenState extends State<DebugScreen> {
-  final _userRepo = UserRepository();
+  final _userRepo = FirebaseUserRepository();
   List<Map<String, dynamic>> users = [];
   bool isLoading = false;
 
@@ -28,24 +28,35 @@ class _DebugScreenState extends State<DebugScreen> {
     });
   }
 
-  Future<void> handleResetAll() async {
-    final confirm = await _showConfirm(
-      'Confirmation',
-      'Voulez-vous réinitialiser le mot de passe de TOUS les membres (sauf admin) ?',
-    );
-    if (confirm != true) return;
+Future<void> handleResetAll() async {
+  final confirm = await _showConfirm(
+    'Confirmation',
+    'Voulez-vous réinitialiser le mot de passe de TOUS les membres (sauf admin) ?',
+  );
+  
+  if (confirm != true) return;
 
-    try {
-      await _userRepo.resetAllMemberPasswords();
-      await _showAlert(
-          'Succès', 'Tous les mots de passe ont été réinitialisés');
-      await loadUsers();
-    } catch (e) {
-      await _showAlert('Erreur', e.toString());
+  try {
+    setState(() => isLoading = true); // Bloquer l'UI pendant l'opération
+
+    await _userRepo.resetAllMemberPasswords();
+    
+    // On recharge les données immédiatement pour que l'UI soit à jour
+    await loadUsers(); 
+
+    if (mounted) {
+      setState(() => isLoading = false);
+      await _showAlert('Succès', 'Tous les mots de passe ont été réinitialisés');
+    }
+  } catch (e) {
+    if (mounted) {
+      setState(() => isLoading = false);
+      await _showAlert('Erreur', 'Échec de la réinitialisation : $e');
     }
   }
+}
 
-  Future<void> handleResetOne(int id, String email) async {
+  Future<void> handleResetOne(String id, String email) async {
     final confirm = await _showConfirm(
       'Confirmation',
       'Réinitialiser le mot de passe de $email ?',
@@ -226,7 +237,7 @@ class _DebugScreenState extends State<DebugScreen> {
                                                     const Color(0xFFFF9800),
                                               ),
                                               onPressed: () => handleResetOne(
-                                                  user['id'] as int,
+                                                  user['id'] as String,
                                                   user['email'] as String),
                                               child: const Text(
                                                   '🔄 Réinitialiser ce compte'),

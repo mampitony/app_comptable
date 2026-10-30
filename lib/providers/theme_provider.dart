@@ -71,6 +71,14 @@ class ThemeProvider with ChangeNotifier {
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: Colors.grey[100],
+        // 🔥 AJOUT : couleurs explicites pour label/placeholder/icônes,
+        // afin qu'aucun champ ne dépende d'une valeur par défaut qui
+        // pourrait rester sombre en mode clair ou clair en mode sombre.
+        labelStyle: const TextStyle(color: Color(0xFF64748B)),
+        floatingLabelStyle: const TextStyle(color: Color(0xFF0163D2)),
+        hintStyle: TextStyle(color: Colors.grey[500]),
+        prefixIconColor: const Color(0xFF64748B),
+        suffixIconColor: const Color(0xFF64748B),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
           borderSide: BorderSide(color: Colors.grey[300]!),
@@ -96,6 +104,11 @@ class ThemeProvider with ChangeNotifier {
           fontWeight: FontWeight.bold,
           color: Color(0xFF1E293B),
         ),
+        // 🔥 AJOUT : c'est ce style (par défaut, si un TextField/
+        // TextFormField ne fixe pas sa propre couleur) qui détermine la
+        // couleur du texte SAISI. Sans lui, le texte pouvait dépendre
+        // d'une valeur par défaut du framework non garantie.
+        titleMedium: TextStyle(fontSize: 16, color: Color(0xFF1E293B)),
         bodyLarge: TextStyle(fontSize: 16, color: Color(0xFF1E293B)),
         bodyMedium: TextStyle(fontSize: 14, color: Color(0xFF64748B)),
       ),
@@ -147,6 +160,12 @@ class ThemeProvider with ChangeNotifier {
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: const Color(0xFF334155),
+        // 🔥 AJOUT : symétrique du thème clair.
+        labelStyle: const TextStyle(color: Color(0xFFCBD5E1)),
+        floatingLabelStyle: const TextStyle(color: Color(0xFF64B5F6)),
+        hintStyle: TextStyle(color: Colors.grey[400]),
+        prefixIconColor: const Color(0xFFCBD5E1),
+        suffixIconColor: const Color(0xFFCBD5E1),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
           borderSide: const BorderSide(color: Color(0xFF475569)),
@@ -172,6 +191,8 @@ class ThemeProvider with ChangeNotifier {
           fontWeight: FontWeight.bold,
           color: Colors.white,
         ),
+        // 🔥 AJOUT : couleur du texte saisi par défaut en mode sombre.
+        titleMedium: TextStyle(fontSize: 16, color: Colors.white),
         bodyLarge: TextStyle(fontSize: 16, color: Colors.white),
         bodyMedium: TextStyle(fontSize: 14, color: Color(0xFF94A3B8)),
       ),

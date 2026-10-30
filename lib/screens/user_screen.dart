@@ -12,6 +12,9 @@ class UserScreen extends StatelessWidget {
 
     // On sécurise un minimum
     final userRole = args?['role']?.toString() ?? 'membre';
+
+    // Rôles membres administrateurs conservés pour la navigation
+    // admin_principal_membre et admin_gestion_membre sont transmis tels quels.
     final userName = args?['prenom'] ?? args?['name'] ?? 'Utilisateur';
     final profileImage = args?['profileImage'] as String?;
 
@@ -21,6 +24,7 @@ class UserScreen extends StatelessWidget {
       userRole: userRole,
       userName: userName,
       profileImage: profileImage,
+      userData: args,
     );
   }
 }

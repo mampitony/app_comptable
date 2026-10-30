@@ -1,14 +1,16 @@
 import 'package:flutter/material.dart';
-import '../database/user_repository.dart';
+import '../database/firebase_user_repository.dart';
+import 'forgot_password_screen.dart';
+import '../navigation/space_switcher.dart';
+import '../services/company_settings_service.dart';
+import 'dart:async';
 
 class AuthScreen extends StatefulWidget {
-  final String userType; // 'admin' ou 'user'
   final void Function(Map<String, dynamic> user) onLoginAsAdmin;
   final void Function(Map<String, dynamic> user) onLoginAsUser;
 
   const AuthScreen({
     super.key,
-    required this.userType,
     required this.onLoginAsAdmin,
     required this.onLoginAsUser,
   });
@@ -18,30 +20,69 @@ class AuthScreen extends StatefulWidget {
 }
 
 class _AuthScreenState extends State<AuthScreen> {
-  final _userRepo = UserRepository();
+  final _userRepo = FirebaseUserRepository();
   bool isLogin = true;
 
-  // --- TA LOGIQUE DE VARIABLES CONSERVÉE ---
-  String loginEmail = '';
-  String loginPassword = '';
-  String signupEmail = '';
-  String signupPassword = '';
-  String signupConfirmPassword = '';
-  String adminKey = '';
+  final TextEditingController _loginEmailController = TextEditingController();
+  final TextEditingController _loginPasswordController =
+      TextEditingController();
+  final TextEditingController _signupEmailController = TextEditingController();
+  final TextEditingController _signupPasswordController =
+      TextEditingController();
+  final TextEditingController _signupConfirmPasswordController =
+      TextEditingController();
+  final TextEditingController _adminKeyController = TextEditingController();
 
   bool showLoginPassword = false;
   bool showSignupPassword = false;
   bool showConfirmPassword = false;
   bool showAdminKey = false;
 
-  // Ta validation d'email
+  // Couleurs de l'écran
+  static const Color _blue = Color(0xFF0163D2);
+  static const Color _cyan = Color(0xFF00AEEF);
+  static const Color _dark = Color(0xFF1E293B);
+
+  // Logo + nom de l'association (temps réel depuis Firestore)
+  String? _logoUrl;
+  String _companyName = '';
+  StreamSubscription<CompanySettings>? _companySub;
+
+  @override
+  void initState() {
+    super.initState();
+    _companySub = CompanySettingsService.instance.watch().listen(
+      (c) {
+        if (!mounted) return;
+        setState(() {
+          _logoUrl = c.logoUrl;
+          _companyName = c.name;
+        });
+      },
+      onError: (_) {},
+    );
+  }
+
+  @override
+  void dispose() {
+    _companySub?.cancel();
+    _loginEmailController.dispose();
+    _loginPasswordController.dispose();
+    _signupEmailController.dispose();
+    _signupPasswordController.dispose();
+    _signupConfirmPasswordController.dispose();
+    _adminKeyController.dispose();
+    super.dispose();
+  }
+
   bool validateEmail(String email) {
     final regex = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$');
     return regex.hasMatch(email);
   }
 
-  void _showAlert(String title, String message) {
-    showDialog<void>(
+  // 🔥 MODIFIÉ : Retourne maintenant un Future pour pouvoir attendre
+  Future<void> _showAlert(String title, String message) {
+    return showDialog<void>(
       context: context,
       barrierDismissible: false,
       builder: (BuildContext dialogContext) => AlertDialog(
@@ -58,24 +99,27 @@ class _AuthScreenState extends State<AuthScreen> {
     );
   }
 
-  // --- TA LOGIQUE DE CONNEXION INITIALE ---
   Future<void> handleLogin() async {
+    final loginEmail = _loginEmailController.text.trim();
+    final loginPassword = _loginPasswordController.text;
+
     if (loginEmail.isEmpty || loginPassword.isEmpty) {
-      _showAlert('Erreur', 'Veuillez remplir tous les champs');
+      await _showAlert('Erreur', 'Veuillez remplir tous les champs');
       return;
     }
 
     try {
       final user = await _userRepo.getUserByEmail(loginEmail);
+      print("USER FIREBASE = $user");
       if (!mounted) return;
       if (user == null) {
-        _showAlert('Erreur', 'Utilisateur non trouvé');
+        await _showAlert('Erreur', 'Utilisateur non trouvé');
         return;
       }
 
       if (user['passwordHash'] == null ||
           (user['passwordHash'] as String).isEmpty) {
-        _showAlert(
+        await _showAlert(
           'Erreur',
           "Votre compte n'est pas encore activé. Veuillez vous inscrire d'abord.",
         );
@@ -87,68 +131,75 @@ class _AuthScreenState extends State<AuthScreen> {
         user['salt'] as String,
       );
       if (hash != user['passwordHash']) {
-        _showAlert('Erreur', 'Mot de passe incorrect');
+        await _showAlert('Erreur', 'Mot de passe incorrect');
         return;
       }
 
-      if (widget.userType == 'admin') {
-        if (user['role'] != 'admin') {
-          _showAlert('Erreur', "Accès refusé. Vous n'êtes pas administrateur.");
-          return;
-        }
-        widget.onLoginAsAdmin({
-          'prenom': user['prenom'],
-          'profileImage': user['profileImage'],
-        });
-      } else {
-        if (user['role'] == 'admin') {
-          _showAlert(
-            'Erreur',
-            'Les administrateurs doivent utiliser l\'espace Administrateur.',
-          );
-          return;
-        }
-        widget.onLoginAsUser({
-          'id': user['id'],
-          'name': user['name'],
-          'prenom': user['prenom'],
-          'email': user['email'],
-          'profileImage': user['profileImage'],
-          'role': user['role'],
-        });
+      // 🔥 NOUVELLE LOGIQUE (écran de connexion unique) : l'utilisateur ne
+      // choisit plus son espace. La redirection est entièrement décidée
+      // par les données Firebase :
+      //   - adminRole = admin_principal_membre -> espace Admin principal
+      //   - adminRole = admin_gestion_membre   -> espace Admin gestion membre
+      //   - adminRole = null                   -> espace Membre (inclut
+      //     les comptables : leur droit vit dans `role`, logique
+      //     comptable existante strictement inchangée).
+      // 🔥 ROLES MULTIPLES : si le membre n'a qu'un seul espace, il y entre
+      // directement (comportement d'avant). S'il en a plusieurs (ex.
+      // Administration + Sécretaire, ou Sécretaire + Responsable de
+      // Communication), il choisit celui avec lequel il veut continuer ;
+      // il pourra ensuite en changer depuis le menu (« Changer d'espace »).
+      final spaces = SpaceSwitcher.spacesFor(user);
+      var chosen = spaces.first;
+      if (spaces.length > 1) {
+        if (!mounted) return;
+        final picked = await SpaceSwitcher.choose(context, spaces);
+        // Menu fermé sans choix : on reste sur l'écran de connexion.
+        if (picked == null) return;
+        chosen = picked;
       }
 
-      setState(() {
-        loginEmail = '';
-        loginPassword = '';
-      });
+      final payload = SpaceSwitcher.payload(user, chosen);
+      if (chosen.isAdmin) {
+        widget.onLoginAsAdmin(payload);
+      } else {
+        widget.onLoginAsUser(payload);
+      }
+      _loginEmailController.clear();
+      _loginPasswordController.clear();
     } catch (e) {
       if (!mounted) return;
-      _showAlert('Erreur de connexion', e.toString());
+      await _showAlert('Erreur de connexion', e.toString());
     }
   }
 
-  // --- TA LOGIQUE DE SIGNUP INITIALE ---
   Future<void> handleSignup() async {
+    final signupEmail = _signupEmailController.text.trim();
+    final signupPassword = _signupPasswordController.text;
+    final signupConfirmPassword = _signupConfirmPasswordController.text;
+    final adminKey = _adminKeyController.text;
+
     if (signupEmail.isEmpty ||
         signupPassword.isEmpty ||
         signupConfirmPassword.isEmpty) {
-      _showAlert('Erreur', 'Veuillez remplir tous les champs');
+      await _showAlert('Erreur', 'Veuillez remplir tous les champs');
       return;
     }
 
     if (!validateEmail(signupEmail)) {
-      _showAlert('Erreur', "Format d'email invalide. Il doit contenir @ et .");
+      await _showAlert(
+        'Erreur',
+        "Format d'email invalide. Il doit contenir @ et .",
+      );
       return;
     }
 
     if (signupPassword != signupConfirmPassword) {
-      _showAlert('Erreur', 'Les mots de passe ne correspondent pas');
+      await _showAlert('Erreur', 'Les mots de passe ne correspondent pas');
       return;
     }
 
     if (signupPassword.length < 6) {
-      _showAlert(
+      await _showAlert(
         'Erreur',
         'Le mot de passe doit au moins contenir 6 caractères',
       );
@@ -156,179 +207,101 @@ class _AuthScreenState extends State<AuthScreen> {
     }
 
     try {
-      final allUsers = await _userRepo.getAllUsers();
+      // 🔥 NOUVELLE LOGIQUE : plus de portail choisi à l'avance. On
+      // détermine automatiquement s'il s'agit de l'activation d'un
+      // compte membre déjà enregistré par un administrateur, ou de la
+      // création du tout premier compte administrateur principal
+      // (uniquement possible si l'email est inconnu de la base et que
+      // le mot clé admin est fourni).
+      final existingUser = await _userRepo.getUserByEmail(signupEmail);
       if (!mounted) return;
 
-      if (widget.userType == 'admin') {
-        if (adminKey.isEmpty) {
-          _showAlert('Erreur', 'Veuillez saisir le mot clé administrateur');
-          return;
-        }
-        if (adminKey != 'ADMIN123') {
-          // Ta clé de sécurité
-          _showAlert('Erreur', 'Mot clé administrateur incorrect');
-          return;
-        }
-
-        final existingAdmin = allUsers
-            .where((u) => u['role'] == 'admin')
-            .toList();
-        if (existingAdmin.isNotEmpty) {
-          _showAlert('Erreur', 'Un compte administrateur existe déjà.');
-          return;
-        }
-
-        await _userRepo.addUser(
-          name: signupEmail,
-          email: signupEmail,
-          password: signupPassword,
-          role: 'admin',
-        );
-        _showAlert('Succès', 'Compte administrateur créé avec succès.');
-      } else {
-        // Logique membre : vérification existence email avant activation
-        final memberExists = allUsers
-            .where((u) => u['email']?.toString() == signupEmail)
-            .toList();
-
-        if (memberExists.isEmpty) {
-          _showAlert(
-            'Erreur',
-            "Cet email n'existe pas dans la liste des membres. Contactez l'administrateur.",
-          );
-          return;
-        }
-
-        final member = memberExists.first;
-        if (member['passwordHash'] != null &&
-            (member['passwordHash'] as String).isNotEmpty) {
-          _showAlert(
+      if (existingUser != null) {
+        // Compte membre déjà enregistré par un administrateur :
+        // activation — logique strictement inchangée.
+        if (existingUser['passwordHash'] != null &&
+            (existingUser['passwordHash'] as String).isNotEmpty) {
+          await _showAlert(
             'Erreur',
             'Votre compte est déjà activé. Utilisez la connexion.',
           );
           return;
         }
 
-        await _userRepo.updateUserPassword(member['id'] as int, signupPassword);
-        _showAlert('Succès', 'Votre compte a été activé !');
+        await _userRepo.updateUserPassword(
+          existingUser['id'] as String,
+          signupPassword,
+        );
+
+        await _showAlert('Succès', 'Votre compte a été activé !');
+      } else {
+        // Email inconnu de la base membres : seule la création du tout
+        // premier administrateur principal est possible dans ce cas.
+        if (adminKey.isEmpty) {
+          await _showAlert(
+            'Erreur',
+            "Cet email n'existe pas dans la liste des membres. Contactez l'administrateur.",
+          );
+          return;
+        }
+        if (adminKey != 'ADMIN123') {
+          await _showAlert('Erreur', 'Mot clé administrateur incorrect');
+          return;
+        }
+        // 🔥 CORRIGÉ : l'existence de l'admin principal se vérifie
+        // désormais via `adminRole` (et non plus `role`, qui ne contient
+        // plus jamais de valeur d'administration).
+        if (await _userRepo.adminPrincipalExists()) {
+          await _showAlert('Erreur', 'Un compte administrateur existe déjà.');
+          return;
+        }
+
+        // Crée le compte : `role` = fonction normale ('membre'),
+        // `adminRole` = admin_principal_membre.
+        await _userRepo.createAdminPrincipal(
+          name: signupEmail,
+          email: signupEmail,
+          password: signupPassword,
+        );
+
+        await _showAlert('Succès', 'Compte administrateur créé avec succès !');
       }
 
-      setState(() {
-        signupEmail = '';
-        signupPassword = '';
-        signupConfirmPassword = '';
-        adminKey = '';
-        isLogin = true;
-      });
+      // 🔥 MODIFIÉ : Nettoie les champs APRÈS que l'utilisateur a vu le message
+      _signupEmailController.clear();
+      _signupPasswordController.clear();
+      _signupConfirmPasswordController.clear();
+      _adminKeyController.clear();
+
+      // 🔥 MODIFIÉ : Change d'onglet APRÈS que l'utilisateur a fermé la dialog
+      if (mounted) {
+        setState(() => isLogin = true);
+      }
     } catch (e) {
       if (!mounted) return;
-      _showAlert('Erreur', 'Une erreur est survenue : $e');
+      await _showAlert('Erreur', 'Une erreur est survenue : $e');
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final isAdmin = widget.userType == 'admin';
-
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFF),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF0163D2),
-        elevation: 0,
-        centerTitle: true,
-        title: Text(
-          isAdmin ? "ESPACE ADMIN" : "ESPACE MEMBRE",
-          style: const TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.bold,
+      resizeToAvoidBottomInset: true,
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFF0B1F4B), _blue, Color(0xFF0B1F4B)],
           ),
         ),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-      ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24),
-          child: Column(
-            children: [
-              const SizedBox(height: 30),
-              _buildProfileHeader(isAdmin),
-              const SizedBox(height: 30),
-              _buildTabSelector(),
-              const SizedBox(height: 25),
-              isLogin ? _buildLoginForm() : _buildSignupForm(isAdmin),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildProfileHeader(bool isAdmin) {
-    return Column(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: const Color(0xFF0163D2).withOpacity(0.1),
-            shape: BoxShape.circle,
-          ),
-          child: Icon(
-            isAdmin ? Icons.admin_panel_settings : Icons.person_rounded,
-            size: 60,
-            color: const Color(0xFF0163D2),
-          ),
-        ),
-        const SizedBox(height: 10),
-        const Text(
-          "Welcome Back",
-          style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildTabSelector() {
-    return Container(
-      height: 50,
-      decoration: BoxDecoration(
-        color: Colors.grey.shade200,
-        borderRadius: BorderRadius.circular(15),
-      ),
-      child: Row(
-        children: [
-          _buildTabOption(
-            "Connexion",
-            isLogin,
-            () => setState(() => isLogin = true),
-          ),
-          _buildTabOption(
-            "Inscription",
-            !isLogin,
-            () => setState(() => isLogin = false),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTabOption(String title, bool active, VoidCallback onTap) {
-    return Expanded(
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          decoration: BoxDecoration(
-            color: active ? const Color(0xFF0163D2) : Colors.transparent,
-            borderRadius: BorderRadius.circular(15),
-          ),
+        child: SafeArea(
           child: Center(
-            child: Text(
-              title,
-              style: TextStyle(
-                color: active ? Colors.white : Colors.black54,
-                fontWeight: FontWeight.bold,
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 420),
+                child: _buildMainCard(),
               ),
             ),
           ),
@@ -337,126 +310,411 @@ class _AuthScreenState extends State<AuthScreen> {
     );
   }
 
-  Widget _buildLoginForm() {
-    return Column(
-      children: [
-        _buildTextField(
-          'Email',
-          Icons.email_outlined,
-          (v) => loginEmail = v,
-          initialValue: loginEmail,
-        ),
-        const SizedBox(height: 15),
-        _buildPasswordField(
-          'Mot de passe',
-          showLoginPassword,
-          (v) => loginPassword = v,
-          () => setState(() => showLoginPassword = !showLoginPassword),
-        ),
-        const SizedBox(height: 30),
-        _buildActionButton("SE CONNECTER", handleLogin),
-      ],
-    );
-  }
-
-  Widget _buildSignupForm(bool isAdmin) {
-    return Column(
-      children: [
-        _buildTextField(
-          'Votre Email',
-          Icons.email_outlined,
-          (v) => signupEmail = v,
-          initialValue: signupEmail,
-        ),
-        if (isAdmin) ...[
-          const SizedBox(height: 15),
-          _buildPasswordField(
-            'Mot clé Admin',
-            showAdminKey,
-            (v) => adminKey = v,
-            () => setState(() => showAdminKey = !showAdminKey),
-            hint: 'ADMIN123',
+  // Grande carte blanche avec la vague bleue en haut à gauche
+  Widget _buildMainCard() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(28),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.35),
+            blurRadius: 30,
+            offset: const Offset(0, 16),
           ),
         ],
-        const SizedBox(height: 15),
-        _buildPasswordField(
-          'Créer mot de passe',
-          showSignupPassword,
-          (v) => signupPassword = v,
-          () => setState(() => showSignupPassword = !showSignupPassword),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(28),
+        child: Stack(
+          children: [
+            Positioned(
+              top: 0,
+              left: 0,
+              child: ClipPath(
+                clipper: _TopLeftWaveClipper(),
+                child: Container(
+                  width: 190,
+                  height: 120,
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [_cyan, _blue],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            if (Navigator.of(context).canPop())
+              Positioned(
+                top: 6,
+                left: 6,
+                child: IconButton(
+                  icon: const Icon(Icons.arrow_back_ios_new,
+                      color: Colors.white, size: 20),
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+              ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 34, 20, 16),
+              child: Column(
+                children: [
+                  _buildLogoHeader(),
+                  const SizedBox(height: 26),
+                  _buildTabs(),
+                  const SizedBox(height: 14),
+                  _buildFormCard(),
+                ],
+              ),
+            ),
+          ],
         ),
-        const SizedBox(height: 15),
-        _buildPasswordField(
-          'Confirmer mot de passe',
-          showConfirmPassword,
-          (v) => signupConfirmPassword = v,
-          () => setState(() => showConfirmPassword = !showConfirmPassword),
+      ),
+    );
+  }
+
+  Widget _buildLogoHeader() {
+    return Column(
+      children: [
+        Container(
+          width: 86,
+          height: 86,
+          padding: const EdgeInsets.all(3),
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: Colors.white,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.15),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: ClipOval(
+            child: (_logoUrl != null && _logoUrl!.isNotEmpty)
+                ? Image.network(
+                    _logoUrl!,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => const Icon(
+                        Icons.account_balance,
+                        size: 40,
+                        color: _blue),
+                  )
+                : const Icon(Icons.account_balance, size: 40, color: _blue),
+          ),
         ),
-        const SizedBox(height: 30),
-        _buildActionButton("S'INSCRIRE", handleSignup),
+        if (_companyName.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          Text(
+            _companyName.toUpperCase(),
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: _dark,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 2,
+              fontSize: 14,
+            ),
+          ),
+        ],
       ],
     );
   }
 
-  Widget _buildTextField(
-    String label,
-    IconData icon,
-    Function(String) onChanged, {
-    String initialValue = '',
-  }) {
-    return TextField(
-      onChanged: onChanged,
-      decoration: InputDecoration(
-        labelText: label,
-        prefixIcon: Icon(icon, color: const Color(0xFF0163D2)),
-        filled: true,
-        fillColor: Colors.white,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(15),
-          borderSide: BorderSide.none,
+  // Onglets texte : Connexion (gauche) / Inscription (droite)
+  Widget _buildTabs() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          _buildTab('Connexion', isLogin, () => setState(() => isLogin = true)),
+          _buildTab(
+              'Inscription', !isLogin, () => setState(() => isLogin = false)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTab(String label, bool active, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+        child: Column(
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: active ? 18 : 15,
+                fontWeight: active ? FontWeight.w800 : FontWeight.w500,
+                color: active ? _blue : Colors.black45,
+              ),
+            ),
+            const SizedBox(height: 4),
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              height: 3,
+              width: active ? 30 : 0,
+              decoration: BoxDecoration(
+                color: _blue,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  Widget _buildPasswordField(
-    String label,
-    bool isVisible,
-    Function(String) onChanged,
-    VoidCallback onToggle, {
-    String hint = '',
-  }) {
-    return TextField(
-      onChanged: onChanged,
-      obscureText: !isVisible,
-      decoration: InputDecoration(
-        labelText: label,
-        hintText: hint,
-        prefixIcon: const Icon(Icons.lock_outline, color: Color(0xFF0163D2)),
-        suffixIcon: IconButton(
-          icon: Icon(isVisible ? Icons.visibility : Icons.visibility_off),
-          onPressed: onToggle,
+  // Carte flottante du formulaire + vague en bas + bouton qui déborde
+  Widget _buildFormCard() {
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Container(
+          margin: const EdgeInsets.only(bottom: 26),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(22),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.18),
+                blurRadius: 22,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(22),
+            child: Stack(
+              children: [
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  height: 64,
+                  child: ClipPath(
+                    clipper: _BottomWaveClipper(),
+                    child: Container(
+                      decoration: const BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [_blue, _cyan],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 18, 20, 70),
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 220),
+                    child: isLogin
+                        ? KeyedSubtree(
+                            key: const ValueKey('login'),
+                            child: _buildLoginFields(),
+                          )
+                        : KeyedSubtree(
+                            key: const ValueKey('signup'),
+                            child: _buildSignupFields(),
+                          ),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
-        filled: true,
-        fillColor: Colors.white,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(15),
-          borderSide: BorderSide.none,
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: 0,
+          child: Center(
+            child: _buildPillButton(
+              isLogin ? 'SE CONNECTER' : "S'INSCRIRE",
+              isLogin ? handleLogin : handleSignup,
+            ),
+          ),
         ),
+      ],
+    );
+  }
+
+  // 🔑 Mot de passe oublié : code envoyé par email, puis nouveau mot de passe.
+  Future<void> _openForgotPassword() async {
+    final email = await Navigator.of(context).push<String>(
+      MaterialPageRoute(
+        builder: (_) => ForgotPasswordScreen(
+          initialEmail: _loginEmailController.text.trim(),
+        ),
+      ),
+    );
+    if (!mounted || email == null) return;
+
+    setState(() {
+      _loginEmailController.text = email;
+      _loginPasswordController.clear();
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Mot de passe modifié. Vous pouvez vous connecter.'),
+        backgroundColor: Colors.green,
       ),
     );
   }
 
-  Widget _buildActionButton(String label, VoidCallback onTap) {
-    return SizedBox(
-      width: double.infinity,
-      height: 55,
+  Widget _buildLoginFields() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _buildLineField(
+          label: 'Email',
+          icon: Icons.email_outlined,
+          controller: _loginEmailController,
+          keyboardType: TextInputType.emailAddress,
+        ),
+        const SizedBox(height: 12),
+        _buildLineField(
+          label: 'Mot de passe',
+          icon: Icons.lock_outline,
+          controller: _loginPasswordController,
+          isPassword: true,
+          visible: showLoginPassword,
+          onToggle: () => setState(() => showLoginPassword = !showLoginPassword),
+        ),
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton(
+            onPressed: _openForgotPassword,
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: const Text(
+              'Mot de passe oublié ?',
+              style: TextStyle(
+                color: _dark,
+                fontWeight: FontWeight.w600,
+                fontSize: 12.5,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSignupFields() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _buildLineField(
+          label: 'Votre email',
+          icon: Icons.email_outlined,
+          controller: _signupEmailController,
+          keyboardType: TextInputType.emailAddress,
+        ),
+        const SizedBox(height: 12),
+        // Uniquement pour la création du tout premier compte administrateur.
+        _buildLineField(
+          label: 'Mot clé Admin (1er admin uniquement)',
+          icon: Icons.vpn_key_outlined,
+          controller: _adminKeyController,
+          isPassword: true,
+          visible: showAdminKey,
+          onToggle: () => setState(() => showAdminKey = !showAdminKey),
+        ),
+        const SizedBox(height: 12),
+        _buildLineField(
+          label: 'Créer mot de passe',
+          icon: Icons.lock_outline,
+          controller: _signupPasswordController,
+          isPassword: true,
+          visible: showSignupPassword,
+          onToggle: () =>
+              setState(() => showSignupPassword = !showSignupPassword),
+        ),
+        const SizedBox(height: 12),
+        _buildLineField(
+          label: 'Confirmer mot de passe',
+          icon: Icons.lock_outline,
+          controller: _signupConfirmPasswordController,
+          isPassword: true,
+          visible: showConfirmPassword,
+          onToggle: () =>
+              setState(() => showConfirmPassword = !showConfirmPassword),
+        ),
+      ],
+    );
+  }
+
+  // Champ souligné, icône à droite (comme sur la capture)
+  Widget _buildLineField({
+    required String label,
+    required IconData icon,
+    required TextEditingController controller,
+    bool isPassword = false,
+    bool visible = false,
+    VoidCallback? onToggle,
+    TextInputType? keyboardType,
+  }) {
+    return TextField(
+      controller: controller,
+      obscureText: isPassword && !visible,
+      keyboardType: keyboardType,
+      cursorColor: _blue,
+      style: const TextStyle(fontSize: 15, color: _dark),
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: const TextStyle(fontSize: 14, color: Colors.black54),
+        floatingLabelStyle:
+            const TextStyle(color: _blue, fontWeight: FontWeight.w600),
+        filled: false,
+        contentPadding: const EdgeInsets.symmetric(vertical: 10),
+        enabledBorder: const UnderlineInputBorder(
+          borderSide: BorderSide(color: Colors.black54, width: 1),
+        ),
+        focusedBorder: const UnderlineInputBorder(
+          borderSide: BorderSide(color: _blue, width: 2),
+        ),
+        border: const UnderlineInputBorder(),
+        suffixIcon: isPassword
+            ? IconButton(
+                icon: Icon(
+                  visible ? Icons.visibility : Icons.visibility_off,
+                  color: _dark,
+                  size: 22,
+                ),
+                onPressed: onToggle,
+              )
+            : Icon(icon, color: _dark, size: 22),
+      ),
+    );
+  }
+
+  Widget _buildPillButton(String label, VoidCallback onTap) {
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(30),
+        gradient: const LinearGradient(colors: [_cyan, _blue]),
+        boxShadow: [
+          BoxShadow(
+            color: _blue.withOpacity(0.45),
+            blurRadius: 14,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
       child: ElevatedButton(
         onPressed: onTap,
         style: ElevatedButton.styleFrom(
-          backgroundColor: const Color(0xFF1E293B),
+          backgroundColor: Colors.transparent,
+          shadowColor: Colors.transparent,
+          minimumSize: const Size(190, 50),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(15),
+            borderRadius: BorderRadius.circular(30),
           ),
         ),
         child: Text(
@@ -465,9 +723,44 @@ class _AuthScreenState extends State<AuthScreen> {
             color: Colors.white,
             fontWeight: FontWeight.bold,
             letterSpacing: 1.2,
+            fontSize: 14,
           ),
         ),
       ),
     );
   }
+}
+
+// Vague en haut à gauche de la carte
+class _TopLeftWaveClipper extends CustomClipper<Path> {
+  @override
+  Path getClip(Size size) {
+    final p = Path()..lineTo(size.width, 0);
+    p.cubicTo(size.width * 0.80, size.height * 0.30, size.width * 0.55,
+        size.height * 0.20, size.width * 0.40, size.height * 0.60);
+    p.cubicTo(size.width * 0.30, size.height * 0.85, size.width * 0.12,
+        size.height * 0.95, 0, size.height);
+    p.close();
+    return p;
+  }
+
+  @override
+  bool shouldReclip(covariant CustomClipper<Path> oldClipper) => false;
+}
+
+// Vague en bas de la carte du formulaire
+class _BottomWaveClipper extends CustomClipper<Path> {
+  @override
+  Path getClip(Size size) {
+    final p = Path()..moveTo(0, size.height * 0.45);
+    p.cubicTo(size.width * 0.25, size.height * 0.05, size.width * 0.55,
+        size.height * 0.95, size.width, size.height * 0.30);
+    p.lineTo(size.width, size.height);
+    p.lineTo(0, size.height);
+    p.close();
+    return p;
+  }
+
+  @override
+  bool shouldReclip(covariant CustomClipper<Path> oldClipper) => false;
 }

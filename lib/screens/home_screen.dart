@@ -13,33 +13,51 @@ class HomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final screenSize = MediaQuery.of(context).size;
+    final screenHeight = screenSize.height;
+    final screenWidth = screenSize.width;
+    
+    // Calcul des tailles adaptatives
+    final isVerySmallScreen = screenHeight < 700;
+    final isSmallScreen = screenWidth < 600;
+    
+    // Facteur de réduction pour petits écrans
+    final scaleFactor = isVerySmallScreen ? 0.75 : (screenHeight < 800 ? 0.85 : 1.0);
+
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F7FA), // Gris bleuté très pro
+      backgroundColor: const Color(0xFFF4F7FA),
       body: Stack(
         children: [
-          // Décor géométrique discret pour le côté "Structure"
           _buildBackgroundStructure(),
-
           SafeArea(
-            child: Column(
-              children: [
-                const SizedBox(height: 60),
-
-                // --- SECTION TITRE ET SLOGAN ---
-                _buildFinanceHeader(),
-
-                const Spacer(),
-
-                // --- ÉLÉMENT CENTRAL : LE COEUR DE LA GESTION ---
-                _buildCentralDashboardIcon(),
-
-                const Spacer(),
-
-                // --- SÉLECTEUR DE PROFIL STYLE "BANKING" ---
-                _buildProfileSelector(),
-
-                const SizedBox(height: 50),
-              ],
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                return SingleChildScrollView(
+                  physics: const ClampingScrollPhysics(),
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      minHeight: constraints.maxHeight,
+                    ),
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: isSmallScreen ? 20 : 40,
+                      ),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: [
+                          SizedBox(height: 20 * scaleFactor),
+                          _buildFinanceHeader(scaleFactor),
+                          SizedBox(height: 20 * scaleFactor),
+                          _buildCentralDashboardIcon(scaleFactor),
+                          SizedBox(height: 20 * scaleFactor),
+                          _buildProfileSelector(scaleFactor, isSmallScreen),
+                          SizedBox(height: 20 * scaleFactor),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
             ),
           ),
         ],
@@ -47,40 +65,44 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildFinanceHeader() {
+  Widget _buildFinanceHeader(double scaleFactor) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 40),
+      padding: EdgeInsets.symmetric(horizontal: 20 * scaleFactor),
       child: Column(
         children: [
-          const SizedBox(height: 12),
-          const Text(
+          SizedBox(height: 12 * scaleFactor),
+          Text(
             "La clarté dans vos comptes,",
             textAlign: TextAlign.center,
             style: TextStyle(
-              fontSize: 22,
+              fontSize: 22 * scaleFactor,
               fontWeight: FontWeight.w400,
-              color: Color(0xFF1E293B),
+              color: const Color(0xFF1E293B),
             ),
           ),
-          const Text(
+          Text(
             "l'avenir dans vos projets.",
             textAlign: TextAlign.center,
             style: TextStyle(
-              fontSize: 24,
+              fontSize: 24 * scaleFactor,
               fontWeight: FontWeight.w900,
-              color: Color(0xFF1E293B),
+              color: const Color(0xFF1E293B),
             ),
           ),
-          const SizedBox(height: 15),
-          Container(height: 3, width: 40, color: const Color(0xFF4CAF50)),
+          SizedBox(height: 15 * scaleFactor),
+          Container(
+            height: 3,
+            width: 40 * scaleFactor,
+            color: const Color(0xFF4CAF50),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildCentralDashboardIcon() {
+  Widget _buildCentralDashboardIcon(double scaleFactor) {
     return Container(
-      padding: const EdgeInsets.all(35),
+      padding: EdgeInsets.all(35 * scaleFactor),
       decoration: BoxDecoration(
         color: Colors.white,
         shape: BoxShape.circle,
@@ -95,30 +117,30 @@ class HomeScreen extends StatelessWidget {
       child: Stack(
         alignment: Alignment.center,
         children: [
-          const SizedBox(
-            width: 120,
-            height: 120,
+          SizedBox(
+            width: 120 * scaleFactor,
+            height: 120 * scaleFactor,
             child: CircularProgressIndicator(
-              value: 0.7, // Décoratif : simule un graphique
-              strokeWidth: 8,
-              valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF00AEEF)),
-              backgroundColor: Color(0xFFE2E8F0),
+              value: 0.7,
+              strokeWidth: 8 * scaleFactor,
+              valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF00AEEF)),
+              backgroundColor: const Color(0xFFE2E8F0),
             ),
           ),
-          const Icon(
+          Icon(
             Icons.insights_rounded,
-            size: 50,
-            color: Color(0xFF1E293B),
+            size: 50 * scaleFactor,
+            color: const Color(0xFF1E293B),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildProfileSelector() {
+  Widget _buildProfileSelector(double scaleFactor, bool isSmallScreen) {
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 25),
-      padding: const EdgeInsets.all(20),
+      margin: EdgeInsets.symmetric(horizontal: isSmallScreen ? 15 : 25),
+      padding: EdgeInsets.all(20 * scaleFactor),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(30),
@@ -131,16 +153,17 @@ class HomeScreen extends StatelessWidget {
         ],
       ),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          const Text(
+          Text(
             "SÉLECTIONNEZ VOTRE PORTAIL",
             style: TextStyle(
-              fontSize: 11,
+              fontSize: 11 * scaleFactor,
               fontWeight: FontWeight.bold,
               color: Colors.grey,
             ),
           ),
-          const SizedBox(height: 25),
+          SizedBox(height: 25 * scaleFactor),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
@@ -149,18 +172,21 @@ class HomeScreen extends StatelessWidget {
                 icon: Icons.admin_panel_settings,
                 color: const Color(0xFF1E293B),
                 onTap: () => onNavigateToAuth("admin"),
+                scaleFactor: scaleFactor,
               ),
               _buildModernAction(
                 label: "Membre",
                 icon: Icons.person_rounded,
                 color: const Color(0xFF00AEEF),
                 onTap: () => onNavigateToAuth("user"),
+                scaleFactor: scaleFactor,
               ),
               _buildModernAction(
                 label: "Outils",
                 icon: Icons.construction_rounded,
                 color: const Color(0xFF4CAF50),
                 onTap: onNavigateToDebug,
+                scaleFactor: scaleFactor,
               ),
             ],
           ),
@@ -174,27 +200,33 @@ class HomeScreen extends StatelessWidget {
     required IconData icon,
     required Color color,
     required VoidCallback onTap,
+    required double scaleFactor,
   }) {
     return GestureDetector(
       onTap: onTap,
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            height: 65,
-            width: 65,
+            height: 65 * scaleFactor,
+            width: 65 * scaleFactor,
             decoration: BoxDecoration(
               color: color.withOpacity(0.1),
               borderRadius: BorderRadius.circular(20),
             ),
-            child: Icon(icon, color: color, size: 28),
+            child: Icon(
+              icon,
+              color: color,
+              size: 28 * scaleFactor,
+            ),
           ),
-          const SizedBox(height: 10),
+          SizedBox(height: 10 * scaleFactor),
           Text(
             label,
-            style: const TextStyle(
-              fontSize: 13,
+            style: TextStyle(
+              fontSize: 13 * scaleFactor,
               fontWeight: FontWeight.bold,
-              color: Color(0xFF1E293B),
+              color: const Color(0xFF1E293B),
             ),
           ),
         ],

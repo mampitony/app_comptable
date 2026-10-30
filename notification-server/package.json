@@ -1,0 +1,17 @@
+{
+  "name": "ajem-notification-server",
+  "version": "1.0.0",
+  "description": "Serveur Node.js autonome : envoie une notification FCM à tous les membres AJEM quand une annonce est créée dans Firestore.",
+  "private": true,
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "firebase-admin": "^12.1.0"
+  }
+}

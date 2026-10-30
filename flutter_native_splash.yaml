@@ -1,0 +1,8 @@
+# Écran de démarrage natif d'Android : fond noir uni, sans icône.
+# Le logo animé est ensuite affiché par l'application (splash_screen.dart).
+flutter_native_splash:
+  color: "#000000"
+  image: assets/splash_empty.png
+  android_12:
+    color: "#000000"
+    image: assets/splash_empty.png

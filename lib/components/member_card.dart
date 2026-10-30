@@ -7,7 +7,10 @@ import 'package:flutter/rendering.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:async';
+import '../services/company_settings_service.dart';
+import '../services/image_upload_service.dart';
+import '../database/firebase_user_repository.dart';
 
 class MemberCard extends StatefulWidget {
   final Map<String, dynamic> member;
@@ -21,6 +24,10 @@ class MemberCard extends StatefulWidget {
 class _MemberCardState extends State<MemberCard> {
   final GlobalKey _globalKey = GlobalKey();
 
+  // Rôles autorisés pour la gestion des cartes membres
+  static const String adminPrincipalRole = 'admin_principal_membre';
+  static const String adminGestionRole = 'admin_gestion_membre';
+
   static const double cardWidth = 320.0;
   static const double cardHeight = 620.0;
 
@@ -30,27 +37,51 @@ class _MemberCardState extends State<MemberCard> {
   static const Color ajemDark = Color(0xFF1A4D6D);
 
   String _companyAcronym = "AJEM";
-  String _companySlogan = "« Ndao handray andraikitra, hitondra fampandrosoana ! »";
+  String _companySlogan =
+      "« Ndao handray andraikitra, hitondra fampandrosoana ! »";
   String? _appLogoPath;
+
+  StreamSubscription<CompanySettings>? _companySub;
 
   @override
   void initState() {
     super.initState();
-    _loadCompanyInfo();
+    _listenCompanyInfo();
   }
 
-  Future<void> _loadCompanyInfo() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      _companyAcronym = prefs.getString('company_acronym') ?? "AJEM";
-      _companySlogan = prefs.getString('company_slogan') ?? 
-          "« Ndao handray andraikitra, hitondra fampandrosoana ! »";
-      _appLogoPath = prefs.getString('app_logo_path');
-    });
+  @override
+  void dispose() {
+    _companySub?.cancel();
+    super.dispose();
   }
 
+  // 🔥 Acronyme, slogan et logo viennent de Firestore (partagés par tous
+  // les appareils) au lieu de SharedPreferences (local au téléphone).
+  void _listenCompanyInfo() {
+    _companySub = CompanySettingsService.instance.watch().listen(
+      (c) {
+        if (!mounted) return;
+        setState(() {
+          _companyAcronym = c.acronym;
+          _companySlogan =
+              c.slogan ?? "« Ndao handray andraikitra, hitondra fampandrosoana ! »";
+          _appLogoPath = c.logoUrl;
+        });
+      },
+      onError: (e) => debugPrint('Erreur paramètres entreprise: $e'),
+    );
+  }
+
+  // Mettre le NOM en MAJUSCULE
+  String _upperCase(String value) {
+    if (value.isEmpty) return value;
+    return value.trim().toUpperCase();
+  }
+
+  // Mettre le PRENOM avec première lettre en majuscule
   String _capitalize(String value) {
     if (value.isEmpty) return value;
+
     return value
         .trim()
         .toLowerCase()
@@ -62,8 +93,64 @@ class _MemberCardState extends State<MemberCard> {
         .join(' ');
   }
 
+  // ────────────────────────────────────────────────
+  // 🔥 AJOUT : abréviation automatique des textes trop longs
+  //
+  // La carte garde une taille fixe (cardWidth/cardHeight). Pour éviter tout
+  // dépassement ("BOTTOM OVERFLOWED") quand un nom, un prénom ou une
+  // fonction est long, on réduit le texte à une largeur de ligne maximale
+  // (en caractères) en abrégeant les DERNIERS mots avec leur seule
+  // initiale, tout en gardant toujours le premier mot intact (c'est lui
+  // qui identifie le mieux la personne ou la fonction).
+  //
+  // Exemples :
+  //   "LAZASOA VONY FANDRESENA" (maxChars 20) -> "LAZASOA VONY F."
+  //   "Narindra Perpetue"       (maxChars 14) -> "Narindra P."
+  //
+  // Si même après abréviation le texte reste trop long (ex. un seul mot
+  // très long), une troncature finale propre (avec un point) sert de
+  // filet de sécurité, en plus du `overflow: TextOverflow.ellipsis` posé
+  // sur chaque Text concerné.
+  static String _fitToWidth(String value, int maxChars) {
+    var text = value.trim().replaceAll(RegExp(r'\s+'), ' ');
+    if (text.isEmpty || text.length <= maxChars) return text;
+
+    final words = text.split(' ');
+
+    // Abrège les mots un par un en partant de la fin, en gardant toujours
+    // le premier mot entier.
+    for (var i = words.length - 1; i > 0 && text.length > maxChars; i--) {
+      final word = words[i];
+      if (word.length > 2 && !word.endsWith('.')) {
+        words[i] = '${word[0].toUpperCase()}.';
+        text = words.join(' ');
+      }
+    }
+
+    if (text.length <= maxChars) return text;
+
+    // Dernier recours : troncature propre avec un point final.
+    final safeLength = maxChars - 1;
+    if (safeLength <= 0) return text;
+    return '${text.substring(0, safeLength).trimRight()}.';
+  }
+
   Future<void> _saveAndShareCard(BuildContext context) async {
     try {
+      // 🔥 CORRIGÉ : une photo ImgBB (réseau) peut mettre plus de 300ms à
+      // charger — on l'attend explicitement avant la capture, sinon le
+      // partage pouvait figer l'avatar en placeholder.
+      final photoPath = widget.member['profileImage'] as String?;
+      if (ImageUploadService.isNetworkUrl(photoPath) && context.mounted) {
+        try {
+          await precacheImage(NetworkImage(photoPath!), context);
+        } catch (_) {
+          // Si le chargement échoue, on continue quand même la capture
+          // (le placeholder s'affichera, comme pour une image locale
+          // manquante).
+        }
+      }
+
       await Future.delayed(const Duration(milliseconds: 300));
 
       if (_globalKey.currentContext == null) {
@@ -98,14 +185,16 @@ class _MemberCardState extends State<MemberCard> {
       final Uint8List imageBytes = byteData.buffer.asUint8List();
 
       final dir = await getTemporaryDirectory();
-      final file = File('${dir.path}/carte_${_companyAcronym.toLowerCase()}_${widget.member['id'] ?? 'temp'}.png');
+      final file = File(
+        '${dir.path}/carte_${_companyAcronym.toLowerCase()}_${widget.member['id'] ?? 'temp'}.png',
+      );
       await file.writeAsBytes(imageBytes);
 
       if (!context.mounted) return;
       await Share.shareXFiles(
         [XFile(file.path)],
         text:
-            'Carte de membre $_companyAcronym - ${_capitalize(widget.member['name'] ?? '')} ${_capitalize(widget.member['prenom'] ?? '')}',
+            'Carte de membre $_companyAcronym - ${_upperCase(widget.member['name'] ?? '')} ${_capitalize(widget.member['prenom'] ?? '')}',
       );
     } catch (e, stack) {
       debugPrint('Erreur partage/capture: $e\n$stack');
@@ -210,8 +299,8 @@ class _MemberCardState extends State<MemberCard> {
                               _buildIdentity(),
                               const SizedBox(height: 8),
                               _buildOffice(),
-                              const SizedBox(height: 16),
-                              _buildID(), // ✅ ID ICI dans la section blanche
+                              // const SizedBox(height: 16),
+                              // // _buildOff(), // ✅ ID ICI dans la section blanche
                             ],
                           ),
 
@@ -241,22 +330,22 @@ class _MemberCardState extends State<MemberCard> {
       child: Column(
         children: [
           Container(
-            width: 65,
-            height: 65,
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.95),
-              shape: BoxShape.circle,
-            ),
+            width: 80,
+            height: 80,
+            // decoration: BoxDecoration(
+            //   color: Colors.white.withOpacity(0.95),
+            //   shape: BoxShape.circle,
+            // ),
             padding: const EdgeInsets.all(8),
             child: ClipOval(
               child: _appLogoPath != null && _appLogoPath!.isNotEmpty
-                  ? Image.file(
-                      File(_appLogoPath!),
+                  ? Image.network(
+                      _appLogoPath!,
                       fit: BoxFit.cover,
                       errorBuilder: (context, error, stackTrace) => const Icon(
                         Icons.business,
                         color: Color(0xFF0099FF),
-                        size: 35,
+                        size: 45,
                       ),
                     )
                   : Image.asset(
@@ -265,7 +354,7 @@ class _MemberCardState extends State<MemberCard> {
                       errorBuilder: (context, error, stackTrace) => const Icon(
                         Icons.business,
                         color: Color(0xFF0099FF),
-                        size: 35,
+                        size: 45,
                       ),
                     ),
             ),
@@ -286,60 +375,106 @@ class _MemberCardState extends State<MemberCard> {
   }
 
   Widget _buildAvatar() {
+    // 🔥 CORRIGÉ : l'ancienne version faisait toujours Image.file, qui ne
+    // fonctionne jamais avec une URL ImgBB. On distingue maintenant URL
+    // hébergée (nouveau système) et chemin local (anciennes données non
+    // migrées), sans changer ni la taille ni le design de l'avatar.
+    final String? path = widget.member['profileImage'] as String?;
+    final bool hasImage = path != null && path.isNotEmpty;
+    final placeholder = Container(
+      color: Colors.grey[300],
+      child: const Icon(Icons.person, size: 80, color: Colors.grey),
+    );
+
+    Widget imageWidget;
+    if (!hasImage) {
+      imageWidget = placeholder;
+    } else if (ImageUploadService.isNetworkUrl(path)) {
+      imageWidget = Image.network(
+        path,
+        fit: BoxFit.cover,
+        alignment: Alignment.topCenter,
+        loadingBuilder: (context, child, progress) {
+          if (progress == null) return child;
+          return Container(
+            color: Colors.grey[200],
+            child: const Center(
+              child: SizedBox(
+                width: 28,
+                height: 28,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
+          );
+        },
+        errorBuilder: (context, error, stackTrace) => placeholder,
+      );
+    } else {
+      // Ancienne donnée : chemin local (souvent absent sur l'APK).
+      imageWidget = Image.file(
+        File(path),
+        fit: BoxFit.cover,
+        alignment: Alignment.topCenter,
+        errorBuilder: (context, error, stackTrace) => placeholder,
+      );
+    }
+
     return Container(
       width: 160,
       height: 160,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        border: Border.all(color: Colors.white, width: 6),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.25),
-            blurRadius: 18,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: ClipOval(
-        child: widget.member['profileImage'] != null &&
-                (widget.member['profileImage'] as String).isNotEmpty
-            ? Image.file(
-                File(widget.member['profileImage']),
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) => Container(
-                  color: Colors.grey[300],
-                  child: const Icon(Icons.person, size: 80, color: Colors.grey),
-                ),
-              )
-            : Container(
-                color: Colors.grey[300],
-                child: const Icon(Icons.person, size: 80, color: Colors.grey),
-              ),
-      ),
+      child: ClipOval(child: imageWidget),
     );
   }
 
   Widget _buildIdentity() {
+    // 🔥 AJOUT : abréviation automatique nom / prénom / fonction pour
+    // garantir une hauteur d'affichage constante, quelle que soit la
+    // longueur des informations. Le style visuel (couleur, taille,
+    // graisse) reste strictement identique à l'original.
+    final nom = _fitToWidth(_upperCase(widget.member['name'] ?? ''), 20);
+    final prenom = _fitToWidth(_capitalize(widget.member['prenom'] ?? ''), 20);
+    // 🔥 AJOUT : si le membre a plusieurs fonctions, on affiche la
+    // principale suivie de « +N » (hauteur de la carte inchangée).
+    final extraRoles = FirebaseUserRepository.extraRolesCount(widget.member);
+    final fonctionBrute = (widget.member['role'] ?? 'MEMBRE').toString();
+    final fonction = _fitToWidth(
+      (extraRoles > 0 ? '$fonctionBrute +$extraRoles' : fonctionBrute)
+          .toUpperCase(),
+      18,
+    );
+
+    const identityStyle = TextStyle(
+      color: Color(0xFF2C3E50),
+      fontWeight: FontWeight.bold,
+      fontSize: 18,
+      letterSpacing: 0.4,
+      height: 1.25,
+    );
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Column(
         children: [
+          // Nom et prénom sur deux lignes fixes (au lieu d'un seul bloc
+          // à 3 lignes qui pouvait pousser le contenu hors de la carte).
           Text(
-            _capitalize('${widget.member['name'] ?? ''} ${widget.member['prenom'] ?? ''}'),
+            nom,
             textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: Color(0xFF2C3E50),
-              fontWeight: FontWeight.bold,
-              fontSize: 18,
-              letterSpacing: 0.4,
-              height: 1.25,
-            ),
-            maxLines: 3,
+            style: identityStyle,
+            maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
+          if (prenom.isNotEmpty)
+            Text(
+              prenom,
+              textAlign: TextAlign.center,
+              style: identityStyle,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
           const SizedBox(height: 10),
           Text(
-            (widget.member['role'] ?? 'MEMBRE').toUpperCase(),
+            fonction,
             textAlign: TextAlign.center,
             style: TextStyle(
               color: ajemBlue,
@@ -347,6 +482,8 @@ class _MemberCardState extends State<MemberCard> {
               fontSize: 16,
               letterSpacing: 1.8,
             ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
         ],
       ),
@@ -354,49 +491,72 @@ class _MemberCardState extends State<MemberCard> {
   }
 
   Widget _buildOffice() {
+    // 🔥 AJOUT : même principe pour la formation (mention + établissement) —
+    // abréviation puis troncature de sécurité, en gardant exactement le
+    // même format d'affichage qu'avant ("mention -établissement").
+    final rawFormation =
+        '${widget.member['mention'] ?? ''} -${widget.member['etablissement'] ?? ''}';
+    final formation = _fitToWidth(rawFormation, 34);
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Text(
-        '${widget.member['niveau'] ?? ''} - ${widget.member['mention'] ?? ''}',
+        formation,
         textAlign: TextAlign.center,
         style: const TextStyle(
           color: Color(0xFF7A8A99),
           fontSize: 13,
           fontWeight: FontWeight.w500,
         ),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
       ),
     );
   }
+  //   Widget _buildOff() {
+  //   return Padding(
+  //     padding: const EdgeInsets.symmetric(horizontal: 20),
+  //     child: Text(
+  //       '${widget.member['telephone'] ?? ''}',
+  //       textAlign: TextAlign.center,
+  //       style: const TextStyle(
+  //         color: Color(0xFF7A8A99),
+  //         fontSize: 13,
+  //         fontWeight: FontWeight.w500,
+  //       ),
+  //     ),
+  //   );
+  // }
 
   // ✅ ID dans la section BLANCHE avec couleurs appropriées
-  Widget _buildID() {
-    return Center(
-      child: RichText(
-        textAlign: TextAlign.center,
-        text: TextSpan(
-          children: [
-            const TextSpan(
-              text: 'ID : ',
-              style: TextStyle(
-                color: Color(0xFF2C3E50), // Gris foncé pour fond blanc
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            TextSpan(
-              text: widget.member['id']?.toString().padLeft(12, '0') ?? '000000000000',
-              style: const TextStyle(
-                color: Color(0xFF0099FF), // Bleu vif pour contraste
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 1.5,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  // Widget _buildID() {
+  //   return Center(
+  //     child: RichText(
+  //       textAlign: TextAlign.center,
+  //       text: TextSpan(
+  //         children: [
+  //           // const TextSpan(
+  //           //   text: 'ID : ',
+  //           //   style: TextStyle(
+  //           //     color: Color(0xFF2C3E50), // Gris foncé pour fond blanc
+  //           //     fontSize: 16,
+  //           //     fontWeight: FontWeight.w600,
+  //           //   ),
+  //           // ),
+  //           // TextSpan(
+  //           //   text: widget.member['id']?.toString().padLeft(12, '0') ?? '000000000000',
+  //           //   style: const TextStyle(
+  //           //     color: Color(0xFF0099FF), // Bleu vif pour contraste
+  //           //     fontSize: 16,
+  //           //     fontWeight: FontWeight.bold,
+  //           //     letterSpacing: 1.5,
+  //           //   ),
+  //           // ),
+  //         ],
+  //       ),
+  //     ),
+  //   );
+  // }
 
   Widget _buildQRSection() {
     return Column(
@@ -444,16 +604,9 @@ class _MemberCardState extends State<MemberCard> {
     );
   }
 
-  String _generateQRData() {
-    return '''
-ID:${widget.member['id']}
-NOM:${widget.member['name'] ?? ''} ${widget.member['prenom'] ?? ''}
-ROLE:${widget.member['role'] ?? 'MEMBRE'}
-NIVEAU:${widget.member['niveau'] ?? ''} - ${widget.member['mention'] ?? ''}
-ETABL:${widget.member['etablissement'] ?? ''}
-ASSO:$_companyAcronym
-''';
-  }
+  static const String _siteUrl = 'https://web-site-ajem.vercel.app';
+
+  String _generateQRData() => _siteUrl;
 }
 
 // ────────────────────────────────────────────────

@@ -4,7 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:provider/provider.dart';
+import 'dart:async';
 import '../providers/theme_provider.dart';
+import '../services/company_settings_service.dart';
+import '../components/role_settings_dialog.dart'; // 🔥 AJOUT : rôles et effectifs
+import '../services/image_upload_service.dart';
+import '../services/firebase_announcement_service.dart'; // ✅ AJOUT
 
 class ConfigurationScreen extends StatefulWidget {
   const ConfigurationScreen({Key? key}) : super(key: key);
@@ -16,25 +21,51 @@ class ConfigurationScreen extends StatefulWidget {
 class _ConfigurationScreenState extends State<ConfigurationScreen> {
   bool _notificationsEnabled = true;
   bool _darkModeEnabled = false;
-  String? _appLogoPath;
+  String? _appLogoPath; // URL publique du logo (Firestore)
+  bool _uploadingLogo = false;
+  StreamSubscription<CompanySettings>? _companySub;
 
   final TextEditingController _companyNameController = TextEditingController();
   final TextEditingController _companySloganController = TextEditingController();
   final TextEditingController _announcementController = TextEditingController();
   final TextEditingController _companyAcronymController = TextEditingController();
 
+  // ✅ AJOUT : Service Firebase pour les annonces
+  final FirebaseAnnouncementService _announcementService = FirebaseAnnouncementService();
+
   @override
   void initState() {
     super.initState();
     _loadSettings();
+    _listenCompanySettings();
+    _announcementService.startListening(); // ✅ AJOUT : démarrer l'écoute Firebase
+  }
+
+  // 🔥 Temps réel : toute modification faite par un autre admin apparaît ici.
+  void _listenCompanySettings() {
+    _companySub = CompanySettingsService.instance.watch().listen(
+      (c) {
+        if (!mounted) return;
+        setState(() {
+          _appLogoPath = c.logoUrl;
+          _companyNameController.text = c.name;
+          _companyAcronymController.text = c.acronym;
+          _companySloganController.text =
+              c.slogan ?? '« Ndao handray andraikitra, hitondra fampandrosoana ! »';
+        });
+      },
+      onError: (e) => debugPrint('Erreur paramètres entreprise: $e'),
+    );
   }
 
   @override
   void dispose() {
+    _companySub?.cancel();
     _companyNameController.dispose();
     _companyAcronymController.dispose();
     _companySloganController.dispose();
     _announcementController.dispose();
+    _announcementService.stopListening(); // ✅ AJOUT : arrêter l'écoute Firebase
     super.dispose();
   }
 
@@ -43,12 +74,6 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
     setState(() {
       _notificationsEnabled = prefs.getBool('notifications_enabled') ?? true;
       _darkModeEnabled = prefs.getBool('dark_mode_enabled') ?? false;
-      _appLogoPath = prefs.getString('app_logo_path');
-
-      _companyNameController.text = prefs.getString('company_name') ?? 'CORE LEDGER';
-      _companyAcronymController.text = prefs.getString('company_acronym') ?? 'AJEM';
-      _companySloganController.text = prefs.getString('company_slogan') ??
-          '« Ndao handray andraikitra, hitondra fampandrosoana ! »';
     });
   }
 
@@ -62,18 +87,26 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
   }
 
   void _showCompanyInfoDialog() {
+    final screenSize = MediaQuery.of(context).size;
+    final isSmallScreen = screenSize.width < 600;
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Informations de l\'entreprise'),
+        title: Text(
+          'Informations de l\'entreprise',
+          style: TextStyle(fontSize: isSmallScreen ? 16 : 18),
+        ),
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               TextField(
                 controller: _companyNameController,
+                style: TextStyle(fontSize: isSmallScreen ? 14 : 16),
                 decoration: InputDecoration(
                   labelText: 'Nom de l\'entreprise',
+                  labelStyle: TextStyle(fontSize: isSmallScreen ? 13 : 15),
                   hintText: 'Ex: CORE LEDGER',
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
@@ -81,13 +114,15 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
                   prefixIcon: const Icon(Icons.business),
                 ),
               ),
-              const SizedBox(height: 15),
+              SizedBox(height: isSmallScreen ? 12 : 16),
               TextField(
                 controller: _companyAcronymController,
                 textCapitalization: TextCapitalization.characters,
                 maxLength: 10,
+                style: TextStyle(fontSize: isSmallScreen ? 14 : 16),
                 decoration: InputDecoration(
                   labelText: 'Acronyme',
+                  labelStyle: TextStyle(fontSize: isSmallScreen ? 13 : 15),
                   hintText: 'Ex: AJEM, CL, ABC',
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
@@ -99,8 +134,10 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
               TextField(
                 controller: _companySloganController,
                 maxLines: 3,
+                style: TextStyle(fontSize: isSmallScreen ? 14 : 16),
                 decoration: InputDecoration(
                   labelText: 'Slogan',
+                  labelStyle: TextStyle(fontSize: isSmallScreen ? 13 : 15),
                   hintText: 'Décrivez votre entreprise...',
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
@@ -153,17 +190,29 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
       return;
     }
 
-    await _saveSetting('company_name', name);
-    await _saveSetting('company_acronym', acronym);
-    await _saveSetting('company_slogan', slogan);
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Informations mises à jour avec succès'),
-          backgroundColor: Colors.green,
-        ),
+    try {
+      await CompanySettingsService.instance.saveInfo(
+        name: name,
+        acronym: acronym,
+        slogan: slogan,
       );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Informations mises à jour avec succès'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Échec de la sauvegarde : $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -171,64 +220,109 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
     final ImagePicker picker = ImagePicker();
     final XFile? result = await picker.pickImage(
       source: ImageSource.gallery,
-      imageQuality: 100,
+      imageQuality: 85,
+      maxWidth: 1024,
+      maxHeight: 1024,
     );
 
-    if (result != null) {
-      setState(() {
-        _appLogoPath = result.path;
-      });
-      await _saveSetting('app_logo_path', result.path);
+    if (result == null) return;
+
+    setState(() => _uploadingLogo = true);
+    try {
+      // 1) héberger l'image (URL publique), 2) l'enregistrer dans Firestore :
+      // tous les appareils la reçoivent ensuite en temps réel.
+      final url = await ImageUploadService.uploadImage(File(result.path));
+      await CompanySettingsService.instance.setLogoUrl(url);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Logo mis à jour avec succès')),
         );
       }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Échec de l\'envoi du logo : $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _uploadingLogo = false);
     }
   }
 
   Future<void> _removeAppLogo() async {
-    setState(() {
-      _appLogoPath = null;
-    });
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('app_logo_path');
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Logo supprimé')),
-      );
+    try {
+      await CompanySettingsService.instance.removeLogo();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Logo supprimé')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Échec de la suppression : $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
+  // 🔥 AJOUT : gestion des rôles et du nombre maximum de membres par rôle.
+  void _showRoleSettings() {
+    showDialog(
+      context: context,
+      builder: (_) => const RoleSettingsDialog(),
+    );
+  }
+
   void _showAnnouncementDialog() {
+    final screenSize = MediaQuery.of(context).size;
+    final isSmallScreen = screenSize.width < 600;
+
     _announcementController.clear();
 
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Nouvelle annonce'),
+        title: Text(
+          'Nouvelle annonce',
+          style: TextStyle(fontSize: isSmallScreen ? 16 : 18),
+        ),
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
+              Text(
                 'Cette annonce sera visible par tous les membres.',
-                style: TextStyle(fontSize: 12, color: Colors.grey),
+                style: TextStyle(
+                  fontSize: isSmallScreen ? 11 : 13,
+                  color: Colors.grey,
+                ),
               ),
-              const SizedBox(height: 15),
+              SizedBox(height: isSmallScreen ? 12 : 16),
               TextField(
                 controller: _announcementController,
                 maxLines: 5,
+                // 🔥 CORRIGÉ : couleur explicite depuis le thème (le champ
+                // déjà touché la dernière fois pour son fond).
+                style: TextStyle(
+                  fontSize: isSmallScreen ? 14 : 16,
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
                 decoration: InputDecoration(
                   hintText: 'Tapez votre annonce ici...',
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
                   ),
                   filled: true,
-                  fillColor: Colors.grey[100],
+                  // Fond fourni par le thème (clair/sombre).
                 ),
               ),
             ],
@@ -241,8 +335,8 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
           ),
           ElevatedButton(
             onPressed: () {
-              _publishAnnouncement();
               Navigator.pop(context);
+              _publishAnnouncement(); // ✅ appelé après fermeture du dialog
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF0163D2),
@@ -255,30 +349,22 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
     );
   }
 
+  // ✅ CORRIGÉ : Publie sur Firebase au lieu de SharedPreferences
   Future<void> _publishAnnouncement() async {
     final announcement = _announcementController.text.trim();
 
     if (announcement.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('L\'annonce est vide')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('L\'annonce est vide')),
+        );
+      }
       return;
     }
 
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final now = DateTime.now();
-      final timestamp = '${now.day}/${now.month}/${now.year} ${now.hour}:${now.minute}';
-
-      List<String> announcements = prefs.getStringList('announcements') ?? [];
-      announcements.insert(0, '$timestamp|$announcement');
-
-      if (announcements.length > 10) {
-        announcements = announcements.sublist(0, 10);
-      }
-
-      await prefs.setStringList('announcements', announcements);
-      await prefs.setInt('last_read_announcements_count', 0);
+      // ✅ Publication sur Firebase (temps réel pour tous les utilisateurs)
+      await _announcementService.publishAnnouncement(announcement);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -297,59 +383,82 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
     }
   }
 
-  void _viewAnnouncements() async {
-    final prefs = await SharedPreferences.getInstance();
-    final announcements = prefs.getStringList('announcements') ?? [];
-
-    if (!mounted) return;
+  // ✅ CORRIGÉ : Affiche les annonces depuis Firebase en temps réel
+  void _viewAnnouncements() {
+    final screenSize = MediaQuery.of(context).size;
+    final isSmallScreen = screenSize.width < 600;
 
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Annonces publiées'),
+        title: Text(
+          'Annonces publiées',
+          style: TextStyle(fontSize: isSmallScreen ? 16 : 18),
+        ),
         content: SizedBox(
-          width: double.maxFinite,
-          child: announcements.isEmpty
-              ? const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(20),
-                    child: Text(
-                      'Aucune annonce pour le moment',
-                      style: TextStyle(color: Colors.grey),
+          width: isSmallScreen ? double.maxFinite : 500,
+          height: 400,
+          // ✅ StreamBuilder sur Firebase pour affichage en temps réel
+          child: StreamBuilder<List<Map<String, dynamic>>>(
+            stream: _announcementService.announcementsStream,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+
+              if (snapshot.hasError) {
+                return Center(child: Text('Erreur: ${snapshot.error}'));
+              }
+
+              final announcements = snapshot.data ?? [];
+
+              if (announcements.isEmpty) {
+                return Container(
+                  alignment: Alignment.center,
+                  child: Text(
+                    'Aucune annonce pour le moment',
+                    style: TextStyle(
+                      color: Colors.grey,
+                      fontSize: isSmallScreen ? 14 : 16,
                     ),
                   ),
-                )
-              : ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: announcements.length,
-                  itemBuilder: (context, index) {
-                    final parts = announcements[index].split('|');
-                    final timestamp = parts[0];
-                    final message = parts.length > 1 ? parts[1] : announcements[index];
+                );
+              }
 
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: 10),
-                      child: ListTile(
-                        leading: const Icon(
-                          Icons.campaign,
-                          color: Color(0xFF0163D2),
-                        ),
-                        title: Text(message),
-                        subtitle: Text(
-                          timestamp,
-                          style: const TextStyle(fontSize: 11),
-                        ),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.delete, color: Colors.red),
-                          onPressed: () {
-                            _deleteAnnouncement(index);
-                            Navigator.pop(context);
-                          },
-                        ),
+              return ListView.builder(
+                shrinkWrap: true,
+                itemCount: announcements.length,
+                itemBuilder: (context, index) {
+                  final item = announcements[index];
+                  return Card(
+                    margin: const EdgeInsets.only(bottom: 10),
+                    child: ListTile(
+                      leading: const Icon(
+                        Icons.campaign,
+                        color: Color(0xFF0163D2),
                       ),
-                    );
-                  },
-                ),
+                      title: Text(
+                        item['message'] ?? '',
+                        style: TextStyle(fontSize: isSmallScreen ? 13 : 15),
+                      ),
+                      subtitle: Text(
+                        item['timestamp'] ?? '',
+                        style: TextStyle(fontSize: isSmallScreen ? 10 : 12),
+                      ),
+                      trailing: IconButton(
+                        icon: const Icon(Icons.delete, color: Colors.red),
+                        iconSize: isSmallScreen ? 20 : 24,
+                        onPressed: () {
+                          // 🔥 CORRIGÉ : id du document au lieu d'un index.
+                          _deleteAnnouncement(item['id'] as String);
+                        },
+                      ),
+                    ),
+                  );
+                },
+              );
+            },
+          ),
         ),
         actions: [
           TextButton(
@@ -361,17 +470,21 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
     );
   }
 
-  Future<void> _deleteAnnouncement(int index) async {
-    final prefs = await SharedPreferences.getInstance();
-    List<String> announcements = prefs.getStringList('announcements') ?? [];
-
-    if (index < announcements.length) {
-      announcements.removeAt(index);
-      await prefs.setStringList('announcements', announcements);
+  // 🔥 CORRIGÉ : suppression par id de document, en cohérence avec la
+  // nouvelle collection `announcements` (voir firebase_announcement_service.dart).
+  Future<void> _deleteAnnouncement(String id) async {
+    try {
+      await _announcementService.deleteAnnouncement(id);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Annonce supprimée')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erreur lors de la suppression: $e')),
         );
       }
     }
@@ -379,208 +492,321 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // 🔥 Accéder au ThemeProvider
     final themeProvider = Provider.of<ThemeProvider>(context);
+    final screenSize = MediaQuery.of(context).size;
+    final isSmallScreen = screenSize.width < 600;
+    final horizontalPadding = isSmallScreen ? 16.0 : 24.0;
 
     return Scaffold(
-      body: Container(
-        padding: const EdgeInsets.all(20),
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Configuration',
-                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          return SingleChildScrollView(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                minHeight: constraints.maxHeight,
+                maxWidth: 800,
               ),
-              const SizedBox(height: 30),
-
-              _buildSectionTitle('Informations de l\'entreprise'),
-              Card(
+              child: Container(
+                padding: EdgeInsets.all(horizontalPadding),
                 child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    ListTile(
-                      leading: const Icon(Icons.business, color: Color(0xFF0163D2)),
-                      title: Text(_companyNameController.text),
-                      subtitle: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                    Text(
+                      'Configuration',
+                      style: TextStyle(
+                        fontSize: isSmallScreen ? 20 : 26,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    SizedBox(height: isSmallScreen ? 20 : 30),
+
+                    _buildSectionTitle('Informations de l\'entreprise', isSmallScreen),
+                    Card(
+                      child: Column(
                         children: [
-                          Text(
-                            'Acronyme: ${_companyAcronymController.text}',
-                            style: const TextStyle(fontWeight: FontWeight.w600),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            _companySloganController.text,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
+                          ListTile(
+                            leading: Icon(
+                              Icons.business,
+                              color: const Color(0xFF0163D2),
+                              size: isSmallScreen ? 22 : 26,
+                            ),
+                            title: Text(
+                              _companyNameController.text,
+                              style: TextStyle(fontSize: isSmallScreen ? 14 : 16),
+                            ),
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Acronyme: ${_companyAcronymController.text}',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: isSmallScreen ? 12 : 14,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  _companySloganController.text,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(fontSize: isSmallScreen ? 12 : 14),
+                                ),
+                              ],
+                            ),
+                            trailing: Icon(Icons.edit, size: isSmallScreen ? 18 : 22),
+                            onTap: _showCompanyInfoDialog,
                           ),
                         ],
                       ),
-                      trailing: const Icon(Icons.edit, size: 20),
-                      onTap: _showCompanyInfoDialog,
                     ),
-                  ],
-                ),
-              ),
 
-              const SizedBox(height: 30),
+                    SizedBox(height: isSmallScreen ? 20 : 30),
 
-              _buildSectionTitle('Logo de l\'application'),
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(15),
-                  child: Column(
-                    children: [
-                      if (_appLogoPath != null)
-                        Column(
+                    // 🔥 AJOUT : rôles et effectifs
+                    _buildSectionTitle('Rôles et effectifs', isSmallScreen),
+                    Card(
+                      child: ListTile(
+                        leading: Icon(
+                          Icons.groups,
+                          color: const Color(0xFF0163D2),
+                          size: isSmallScreen ? 22 : 26,
+                        ),
+                        title: Text(
+                          'Gérer les rôles',
+                          style: TextStyle(fontSize: isSmallScreen ? 14 : 16),
+                        ),
+                        subtitle: Text(
+                          'Nombre de secrétaires, trésoriers, commissaires '
+                          'aux comptes... et ajout de nouveaux rôles',
+                          style: TextStyle(fontSize: isSmallScreen ? 12 : 14),
+                        ),
+                        trailing: Icon(
+                          Icons.arrow_forward_ios,
+                          size: isSmallScreen ? 14 : 18,
+                        ),
+                        onTap: _showRoleSettings,
+                      ),
+                    ),
+
+                    SizedBox(height: isSmallScreen ? 20 : 30),
+
+                    _buildSectionTitle('Logo de l\'application', isSmallScreen),
+                    Card(
+                      child: Padding(
+                        padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
+                        child: Column(
                           children: [
-                            Container(
-                              width: 120,
-                              height: 120,
-                              decoration: BoxDecoration(
-                                border: Border.all(color: Colors.grey[300]!),
-                                borderRadius: BorderRadius.circular(10),
+                            if (_appLogoPath != null)
+                              Column(
+                                children: [
+                                  Container(
+                                    width: isSmallScreen ? 100 : 120,
+                                    height: isSmallScreen ? 100 : 120,
+                                    decoration: BoxDecoration(
+                                      border: Border.all(color: Colors.grey[300]!),
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(10),
+                                      child: Image.network(
+                                        _appLogoPath!,
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (context, error, stack) =>
+                                            const Icon(Icons.broken_image, color: Colors.grey),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 10),
+                                ],
+                              )
+                            else
+                              Column(
+                                children: [
+                                  Container(
+                                    width: isSmallScreen ? 100 : 120,
+                                    height: isSmallScreen ? 100 : 120,
+                                    decoration: BoxDecoration(
+                                      color: Colors.grey[200],
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: Icon(
+                                      Icons.image_outlined,
+                                      size: isSmallScreen ? 40 : 50,
+                                      color: Colors.grey,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 10),
+                                ],
                               ),
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(10),
-                                child: Image.file(
-                                  File(_appLogoPath!),
-                                  fit: BoxFit.cover,
+                            Wrap(
+                              spacing: 10,
+                              runSpacing: 10,
+                              alignment: WrapAlignment.center,
+                              children: [
+                                ElevatedButton.icon(
+                                  onPressed: _uploadingLogo ? null : _pickAppLogo,
+                                  icon: _uploadingLogo
+                                      ? const SizedBox(
+                                          width: 18,
+                                          height: 18,
+                                          child: CircularProgressIndicator(strokeWidth: 2),
+                                        )
+                                      : const Icon(Icons.upload),
+                                  label: Text(_uploadingLogo
+                                      ? 'Envoi...'
+                                      : (_appLogoPath == null ? 'Ajouter' : 'Modifier')),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: const Color(0xFF0163D2),
+                                    foregroundColor: Colors.white,
+                                    padding: EdgeInsets.symmetric(
+                                      horizontal: isSmallScreen ? 12 : 16,
+                                      vertical: isSmallScreen ? 10 : 12,
+                                    ),
+                                  ),
                                 ),
-                              ),
+                                if (_appLogoPath != null)
+                                  OutlinedButton.icon(
+                                    onPressed: _removeAppLogo,
+                                    icon: const Icon(Icons.delete),
+                                    label: const Text('Supprimer'),
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: Colors.red,
+                                      padding: EdgeInsets.symmetric(
+                                        horizontal: isSmallScreen ? 12 : 16,
+                                        vertical: isSmallScreen ? 10 : 12,
+                                      ),
+                                    ),
+                                  ),
+                              ],
                             ),
-                            const SizedBox(height: 10),
-                          ],
-                        )
-                      else
-                        Column(
-                          children: [
-                            Container(
-                              width: 120,
-                              height: 120,
-                              decoration: BoxDecoration(
-                                color: Colors.grey[200],
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: const Icon(
-                                Icons.image_outlined,
-                                size: 50,
-                                color: Colors.grey,
-                              ),
-                            ),
-                            const SizedBox(height: 10),
                           ],
                         ),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
+                      ),
+                    ),
+
+                    SizedBox(height: isSmallScreen ? 20 : 30),
+
+                    _buildSectionTitle('Annonces', isSmallScreen),
+                    Card(
+                      child: Column(
                         children: [
-                          ElevatedButton.icon(
-                            onPressed: _pickAppLogo,
-                            icon: const Icon(Icons.upload),
-                            label: Text(_appLogoPath == null ? 'Ajouter' : 'Modifier'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF0163D2),
-                              foregroundColor: Colors.white,
+                          ListTile(
+                            leading: Icon(
+                              Icons.campaign,
+                              color: const Color(0xFF0163D2),
+                              size: isSmallScreen ? 22 : 26,
                             ),
+                            title: Text(
+                              'Créer une annonce',
+                              style: TextStyle(fontSize: isSmallScreen ? 14 : 16),
+                            ),
+                            subtitle: Text(
+                              'Informer tous les membres',
+                              style: TextStyle(fontSize: isSmallScreen ? 12 : 14),
+                            ),
+                            trailing: Icon(
+                              Icons.arrow_forward_ios,
+                              size: isSmallScreen ? 14 : 18,
+                            ),
+                            onTap: _showAnnouncementDialog,
                           ),
-                          if (_appLogoPath != null) ...[
-                            const SizedBox(width: 10),
-                            OutlinedButton.icon(
-                              onPressed: _removeAppLogo,
-                              icon: const Icon(Icons.delete),
-                              label: const Text('Supprimer'),
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: Colors.red,
-                              ),
+                          const Divider(height: 1),
+                          ListTile(
+                            leading: Icon(
+                              Icons.list,
+                              color: Colors.orange,
+                              size: isSmallScreen ? 22 : 26,
                             ),
-                          ],
+                            title: Text(
+                              'Voir les annonces',
+                              style: TextStyle(fontSize: isSmallScreen ? 14 : 16),
+                            ),
+                            subtitle: Text(
+                              'Gérer les annonces publiées',
+                              style: TextStyle(fontSize: isSmallScreen ? 12 : 14),
+                            ),
+                            trailing: Icon(
+                              Icons.arrow_forward_ios,
+                              size: isSmallScreen ? 14 : 18,
+                            ),
+                            onTap: _viewAnnouncements,
+                          ),
                         ],
                       ),
-                    ],
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 30),
-
-              _buildSectionTitle('Annonces'),
-              Card(
-                child: Column(
-                  children: [
-                    ListTile(
-                      leading: const Icon(Icons.campaign, color: Color(0xFF0163D2)),
-                      title: const Text('Créer une annonce'),
-                      subtitle: const Text('Informer tous les membres'),
-                      trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                      onTap: _showAnnouncementDialog,
                     ),
-                    const Divider(height: 1),
-                    ListTile(
-                      leading: const Icon(Icons.list, color: Colors.orange),
-                      title: const Text('Voir les annonces'),
-                      subtitle: const Text('Gérer les annonces publiées'),
-                      trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                      onTap: _viewAnnouncements,
+
+                    SizedBox(height: isSmallScreen ? 20 : 30),
+
+                    _buildSectionTitle('Notifications', isSmallScreen),
+                    _buildSwitchTile(
+                      title: 'Activer les notifications',
+                      subtitle: 'Recevoir des alertes et notifications',
+                      value: _notificationsEnabled,
+                      onChanged: (value) {
+                        setState(() => _notificationsEnabled = value);
+                        _saveSetting('notifications_enabled', value);
+                      },
+                      isSmallScreen: isSmallScreen,
                     ),
+
+                    Divider(height: isSmallScreen ? 30 : 40),
+
+                    _buildSectionTitle('Apparence', isSmallScreen),
+                    SwitchListTile(
+                      title: Text(
+                        'Mode sombre',
+                        style: TextStyle(fontSize: isSmallScreen ? 14 : 16),
+                      ),
+                      subtitle: Text(
+                        'Activer le thème sombre',
+                        style: TextStyle(fontSize: isSmallScreen ? 12 : 14),
+                      ),
+                      value: themeProvider.isDarkMode,
+                      onChanged: (value) {
+                        setState(() => _darkModeEnabled = value);
+                        themeProvider.toggleTheme(value);
+                      },
+                      activeColor: const Color(0xFF0163D2),
+                    ),
+
+                    Divider(height: isSmallScreen ? 30 : 40),
+
+                    _buildSectionTitle('Actions', isSmallScreen),
+                    ListTile(
+                      leading: Icon(
+                        Icons.logout,
+                        color: Colors.red,
+                        size: isSmallScreen ? 22 : 26,
+                      ),
+                      title: Text(
+                        'Déconnexion',
+                        style: TextStyle(fontSize: isSmallScreen ? 14 : 16),
+                      ),
+                      onTap: () {
+                        Navigator.of(context).popUntil((route) => route.isFirst);
+                      },
+                    ),
+
+                    SizedBox(height: isSmallScreen ? 20 : 30),
                   ],
                 ),
               ),
-
-              const SizedBox(height: 30),
-
-              _buildSectionTitle('Notifications'),
-              _buildSwitchTile(
-                title: 'Activer les notifications',
-                subtitle: 'Recevoir des alertes et notifications',
-                value: _notificationsEnabled,
-                onChanged: (value) {
-                  setState(() => _notificationsEnabled = value);
-                  _saveSetting('notifications_enabled', value);
-                },
-              ),
-
-              const Divider(height: 40),
-
-              _buildSectionTitle('Apparence'),
-              // 🔥 Mode sombre fonctionnel avec Provider
-              SwitchListTile(
-                title: const Text('Mode sombre'),
-                subtitle: const Text('Activer le thème sombre'),
-                value: themeProvider.isDarkMode,
-                onChanged: (value) {
-                  setState(() => _darkModeEnabled = value);
-                  themeProvider.toggleTheme(value);
-                },
-                activeColor: const Color(0xFF0163D2),
-              ),
-
-              const Divider(height: 40),
-
-              _buildSectionTitle('Actions'),
-              ListTile(
-                leading: const Icon(Icons.logout, color: Colors.red),
-                title: const Text('Déconnexion'),
-                onTap: () {
-                  Navigator.of(context).popUntil((route) => route.isFirst);
-                },
-              ),
-            ],
-          ),
-        ),
+            ),
+          );
+        },
       ),
     );
   }
 
-  Widget _buildSectionTitle(String title) {
+  Widget _buildSectionTitle(String title, bool isSmallScreen) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Text(
         title,
-        style: const TextStyle(
-          fontSize: 18,
+        style: TextStyle(
+          fontSize: isSmallScreen ? 16 : 20,
           fontWeight: FontWeight.bold,
-          color: Color(0xFF0163D2),
+          color: const Color(0xFF0163D2),
         ),
       ),
     );
@@ -591,10 +817,17 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
     required String subtitle,
     required bool value,
     required Function(bool) onChanged,
+    required bool isSmallScreen,
   }) {
     return SwitchListTile(
-      title: Text(title),
-      subtitle: Text(subtitle),
+      title: Text(
+        title,
+        style: TextStyle(fontSize: isSmallScreen ? 14 : 16),
+      ),
+      subtitle: Text(
+        subtitle,
+        style: TextStyle(fontSize: isSmallScreen ? 12 : 14),
+      ),
       value: value,
       onChanged: onChanged,
       activeColor: const Color(0xFF0163D2),

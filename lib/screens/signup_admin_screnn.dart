@@ -53,7 +53,7 @@ class _SignupAdminScreenState extends State<SignupAdminScreen> {
     // et vérifier le rôle de l'utilisateur, similaire à getUserByEmail et hashPassword
     // Pour l'exemple, nous faisons juste la navigation.
 
-    if (widget.userType == 'admin') {
+    if (widget.userType == 'admin_principal_membre' || widget.userType == 'admin_gestion_membre') {
       Navigator.pushNamed(context, '/adminScreen');
     } else {
       Navigator.pushNamed(context, '/userScreen');
@@ -62,7 +62,7 @@ class _SignupAdminScreenState extends State<SignupAdminScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isAdmin = widget.userType == 'admin';
+    final isAdmin = widget.userType == 'admin_principal_membre' || widget.userType == 'admin_gestion_membre';
 
     return Scaffold(
       appBar: AppBar(
@@ -120,7 +120,7 @@ class _SignupAdminScreenState extends State<SignupAdminScreen> {
               if (isAdmin)
                 TextButton(
                   onPressed: () {
-                    Navigator.pushNamed(context, '/adminSignup');
+                    Navigator.pushNamed(context, '/adminSignup', arguments: {'role': 'admin_gestion_membre'});
                   },
                   child: const Text('Créer un compte administrateur'),
                 ),

@@ -1,22 +1,32 @@
+// lib/navigation/user_drawer_navigator.dart
 import 'package:app_comptable/screens/auth_screen.dart';
 import 'package:flutter/material.dart';
-import 'dart:io';
-// ⚠️ Assure-toi que ce chemin correspond à ton fichier de connexion
 
+import '../screens/admin_screen.dart';
+import '../screens/dashboard_screen.dart'; // 📊 AJOUT
 import '../screens/revenu_screen.dart';
 import '../screens/depense_screen.dart';
 import '../screens/historique_screen.dart';
+import '../screens/annoucement_screen.dart'; // ✅ AJOUT
+import '../services/image_upload_service.dart';
+import 'space_switcher.dart';
+import '../chat/chat_icon_button.dart'; // 💬 AJOUT : messagerie
 
 class UserDrawerNavigator extends StatefulWidget {
   final String userRole;
   final String userName;
   final String? profileImage;
 
+  /// 🔥 AJOUT : données de l'utilisateur connecté (fonctions + droit admin),
+  /// pour proposer « Changer d'espace » quand il a plusieurs rôles.
+  final Map<String, dynamic>? userData;
+
   const UserDrawerNavigator({
     super.key,
     required this.userRole,
     required this.userName,
     this.profileImage,
+    this.userData,
   });
 
   @override
@@ -26,10 +36,16 @@ class UserDrawerNavigator extends StatefulWidget {
 class _UserDrawerNavigatorState extends State<UserDrawerNavigator> {
   int _selectedIndex = 0;
 
+  bool get _canSwitchSpace =>
+      widget.userData != null &&
+      SpaceSwitcher.spacesFor(widget.userData!).length > 1;
+
   final List<String> _titles = [
+    'Tableau de bord', // 📊 AJOUT (index 0)
     'Gestion des Revenus',
     'Suivi des Dépenses',
     'Historique Global',
+    'Annonces',            // ✅ AJOUT
   ];
 
   @override
@@ -38,7 +54,8 @@ class _UserDrawerNavigatorState extends State<UserDrawerNavigator> {
         widget.userRole == 'Tresorier' ||
         widget.userRole == 'Commissaire au compte';
 
-    final List<Widget> _screens = [
+    final List<Widget> screens = [
+      const DashboardScreen(), // 📊 AJOUT (index 0)
       RevenuScreen(
         canEdit: canEdit,
         userName: widget.userName,
@@ -52,6 +69,8 @@ class _UserDrawerNavigatorState extends State<UserDrawerNavigator> {
         profileImage: widget.profileImage,
       ),
       const HistoriqueScreen(),
+      // ✅ On passe le userRole à AnnouncementScreen pour gérer les droits
+      AnnouncementScreen(userRole: widget.userRole),
     ];
 
     return Scaffold(
@@ -62,11 +81,17 @@ class _UserDrawerNavigatorState extends State<UserDrawerNavigator> {
           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
         ),
         backgroundColor: const Color(0xFF0163D2),
+        foregroundColor: Colors.white,
         elevation: 0,
         centerTitle: true,
+        // 💬 AJOUT : icône de messagerie (espace membre uniquement)
+        actions: [
+          if (widget.userData != null)
+            ChatIconButton(userData: widget.userData!),
+        ],
       ),
       drawer: _buildModernDrawer(),
-      body: _screens[_selectedIndex],
+      body: screens[_selectedIndex],
     );
   }
 
@@ -80,26 +105,70 @@ class _UserDrawerNavigatorState extends State<UserDrawerNavigator> {
             child: ListView(
               padding: const EdgeInsets.symmetric(horizontal: 10),
               children: [
+                // 📊 AJOUT : Tableau de bord, au-dessus de Revenu
+                _buildDrawerItem(
+                  Icons.dashboard_rounded,
+                  'Tableau de bord',
+                  0,
+                ),
                 _buildDrawerItem(
                   Icons.account_balance_wallet_rounded,
                   'Revenu',
-                  0,
+                  1,
                 ),
                 _buildDrawerItem(
                   Icons.shopping_cart_checkout_rounded,
                   'Dépenses',
-                  1,
+                  2,
                 ),
-                _buildDrawerItem(Icons.history_rounded, 'Historique', 2),
+                _buildDrawerItem(
+                  Icons.history_rounded,
+                  'Historique',
+                  3,
+                ),
+                // ✅ AJOUT : item Annonces visible pour tous les membres
+                _buildDrawerItem(
+                  Icons.campaign_rounded,
+                  'Annonces',
+                  4,
+                ),
               ],
             ),
           ),
+          // 🔥 AJOUT : bascule entre les rôles / espaces du membre
+          if (_canSwitchSpace)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              child: ListTile(
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 2),
+                leading: Icon(Icons.swap_horiz_rounded,
+                    color: Colors.grey.shade600),
+                title: const Text(
+                  'Changer d\'espace',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.black87,
+                  ),
+                ),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+                onTap: () {
+                  Navigator.pop(context);
+                  SpaceSwitcher.showSwitcher(
+                    context,
+                    widget.userData!,
+                    currentKey: 'role:${widget.userRole}',
+                  );
+                },
+              ),
+            ),
           const Divider(indent: 20, endIndent: 20),
-          // Bouton Déconnexion avec couleur rouge
           _buildDrawerItem(
             Icons.logout_rounded,
             'Déconnexion',
-            3,
+            -1,
             color: Colors.redAccent,
           ),
           const SizedBox(height: 20),
@@ -109,6 +178,14 @@ class _UserDrawerNavigatorState extends State<UserDrawerNavigator> {
   }
 
   Widget _buildUserHeader() {
+    // 🔥 CORRIGÉ : calculé une seule fois, pour piloter à la fois
+    // `backgroundImage` et savoir si `onBackgroundImageError` peut être
+    // fourni (CircleAvatar interdit ce callback quand backgroundImage
+    // est null — c'est l'erreur observée : "backgroundImage != null ||
+    // onBackgroundImageError == null").
+    final avatarProvider =
+        ImageUploadService.resolveImageProvider(widget.profileImage);
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.only(top: 60, bottom: 30),
@@ -145,11 +222,9 @@ class _UserDrawerNavigatorState extends State<UserDrawerNavigator> {
               child: CircleAvatar(
                 radius: 45,
                 backgroundColor: Colors.white,
-                backgroundImage:
-                    widget.profileImage != null &&
-                        widget.profileImage!.isNotEmpty
-                    ? FileImage(File(widget.profileImage!))
-                    : null,
+                backgroundImage: avatarProvider,
+                onBackgroundImageError:
+                    avatarProvider != null ? (exception, stackTrace) {} : null,
                 child:
                     (widget.profileImage == null ||
                         widget.profileImage!.isEmpty)
@@ -225,8 +300,7 @@ class _UserDrawerNavigatorState extends State<UserDrawerNavigator> {
       selectedTileColor: activeColor.withOpacity(0.1),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       onTap: () {
-        if (index == 3) {
-          // --- LOGIQUE DE LOGOUT CORRIGÉE ---
+        if (index == -1) {
           _handleLogout();
         } else {
           setState(() => _selectedIndex = index);
@@ -237,20 +311,48 @@ class _UserDrawerNavigatorState extends State<UserDrawerNavigator> {
   }
 
   void _handleLogout() {
-    // 1. On ferme le drawer
     Navigator.pop(context);
-
-    // 2. On remplace tout par l'écran de login pour "nettoyer" la navigation
+    // 🔥 CORRIGÉ : AuthScreen n'a plus de paramètre `userType` (écran de
+    // connexion unique). Les callbacks étaient vides ici — une
+    // reconnexion depuis cet écran de déconnexion ne menait donc nulle
+    // part. Ils redirigent maintenant réellement vers l'espace approprié,
+    // avec la même logique automatique (adminRole / role) que le reste
+    // de l'application.
     Navigator.pushAndRemoveUntil(
       context,
       MaterialPageRoute(
         builder: (context) => AuthScreen(
-          userType: '',
-          onLoginAsAdmin: (Map<String, dynamic> user) {},
-          onLoginAsUser: (Map<String, dynamic> user) {},
+          onLoginAsAdmin: (user) {
+            Navigator.pushAndRemoveUntil(
+              context,
+              MaterialPageRoute(
+                builder: (_) => AdminScreen(
+                  userRole:
+                      user['role']?.toString() ?? 'admin_principal_membre',
+                  userData: user,
+                ),
+              ),
+              (route) => false,
+            );
+          },
+          onLoginAsUser: (user) {
+            Navigator.pushAndRemoveUntil(
+              context,
+              MaterialPageRoute(
+                builder: (_) => UserDrawerNavigator(
+                  userRole: user['role']?.toString() ?? 'membre',
+                  userName:
+                      user['prenom'] ?? user['name'] ?? 'Utilisateur',
+                  profileImage: user['profileImage'] as String?,
+                  userData: user,
+                ),
+              ),
+              (route) => false,
+            );
+          },
         ),
       ),
-      (route) => false, // Supprime toutes les routes précédentes
+      (route) => false,
     );
   }
 }

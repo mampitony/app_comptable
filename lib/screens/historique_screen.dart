@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../database/historique_repository.dart';
+import '../database/firebase_historique_repository.dart';
 
 class HistoriqueScreen extends StatefulWidget {
   const HistoriqueScreen({Key? key}) : super(key: key);
@@ -9,7 +9,7 @@ class HistoriqueScreen extends StatefulWidget {
 }
 
 class _HistoriqueScreenState extends State<HistoriqueScreen> {
-  final _historiqueRepo = HistoriqueRepository();
+  final FirebaseHistoriqueRepository _historiqueRepo = FirebaseHistoriqueRepository();
   List<Map<String, dynamic>> historique = [];
   bool isLoading = false;
   String filterType = 'tous';
@@ -50,7 +50,7 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
 
   // --- UI COMPONENTS ---
 
-  Widget _buildHeaderStats() {
+  Widget _buildHeaderStats(bool isSmallScreen) {
     final totalRevenus = historique
         .where((item) {
           final type = item['typeOperation']?.toString().toLowerCase() ?? '';
@@ -75,7 +75,12 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
         );
 
     return Container(
-      padding: const EdgeInsets.only(top: 40, bottom: 25, left: 20, right: 20),
+      padding: EdgeInsets.only(
+        top: isSmallScreen ? 35 : 40,
+        bottom: isSmallScreen ? 20 : 25,
+        left: isSmallScreen ? 16 : 20,
+        right: isSmallScreen ? 16 : 20,
+      ),
       decoration: BoxDecoration(
         color: const Color(0xFF0163D2),
         borderRadius: const BorderRadius.only(
@@ -92,16 +97,16 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
       ),
       child: Column(
         children: [
-          const Text(
+          Text(
             "MON RÉSUMÉ",
             style: TextStyle(
               color: Colors.white70,
-              fontSize: 12,
+              fontSize: isSmallScreen ? 11 : 13,
               fontWeight: FontWeight.bold,
               letterSpacing: 1.2,
             ),
           ),
-          const SizedBox(height: 15),
+          SizedBox(height: isSmallScreen ? 12 : 15),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
@@ -110,13 +115,19 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
                 totalRevenus,
                 Icons.add_circle_outline,
                 Colors.greenAccent,
+                isSmallScreen,
               ),
-              Container(width: 1, height: 45, color: Colors.white24),
+              Container(
+                width: 1,
+                height: isSmallScreen ? 40 : 45,
+                color: Colors.white24,
+              ),
               _buildStatItem(
                 "Dépenses",
                 totalDepenses,
                 Icons.remove_circle_outline,
                 Colors.orangeAccent,
+                isSmallScreen,
               ),
             ],
           ),
@@ -130,25 +141,29 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
     double amount,
     IconData icon,
     Color color,
+    bool isSmallScreen,
   ) {
     return Column(
       children: [
         Row(
           children: [
-            Icon(icon, color: color, size: 18),
-            const SizedBox(width: 6),
+            Icon(icon, color: color, size: isSmallScreen ? 16 : 18),
+            SizedBox(width: isSmallScreen ? 5 : 6),
             Text(
               label,
-              style: const TextStyle(color: Colors.white, fontSize: 14),
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: isSmallScreen ? 13 : 15,
+              ),
             ),
           ],
         ),
-        const SizedBox(height: 8),
+        SizedBox(height: isSmallScreen ? 6 : 8),
         Text(
           "${amount.toStringAsFixed(0)} Ar",
-          style: const TextStyle(
+          style: TextStyle(
             color: Colors.white,
-            fontSize: 20,
+            fontSize: isSmallScreen ? 18 : 22,
             fontWeight: FontWeight.bold,
           ),
         ),
@@ -156,32 +171,35 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
     );
   }
 
-  Widget _buildFilterBar() {
+  Widget _buildFilterBar(bool isSmallScreen) {
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
-      padding: const EdgeInsets.all(5),
+      margin: EdgeInsets.symmetric(
+        horizontal: isSmallScreen ? 16 : 20,
+        vertical: isSmallScreen ? 12 : 15,
+      ),
+      padding: EdgeInsets.all(isSmallScreen ? 4 : 5),
       decoration: BoxDecoration(
         color: Colors.grey.shade200,
         borderRadius: BorderRadius.circular(18),
       ),
       child: Row(
         children: [
-          _buildFilterButton("Tous", "tous"),
-          _buildFilterButton("Revenus", "revenu"),
-          _buildFilterButton("Dépenses", "dépense"),
+          _buildFilterButton("Tous", "tous", isSmallScreen),
+          _buildFilterButton("Revenus", "revenu", isSmallScreen),
+          _buildFilterButton("Dépenses", "dépense", isSmallScreen),
         ],
       ),
     );
   }
 
-  Widget _buildFilterButton(String label, String type) {
+  Widget _buildFilterButton(String label, String type, bool isSmallScreen) {
     bool isSelected = filterType == type;
     return Expanded(
       child: GestureDetector(
         onTap: () => setState(() => filterType = type),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 250),
-          padding: const EdgeInsets.symmetric(vertical: 10),
+          padding: EdgeInsets.symmetric(vertical: isSmallScreen ? 8 : 10),
           decoration: BoxDecoration(
             color: isSelected ? Colors.white : Colors.transparent,
             borderRadius: BorderRadius.circular(14),
@@ -202,6 +220,7 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
                     ? const Color(0xFF0163D2)
                     : Colors.grey.shade600,
                 fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                fontSize: isSmallScreen ? 13 : 15,
               ),
             ),
           ),
@@ -210,22 +229,31 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
     );
   }
 
-  Widget _buildTransactionItem(Map<String, dynamic> item) {
+  Widget _buildTransactionItem(
+    Map<String, dynamic> item,
+    bool isSmallScreen,
+  ) {
     final type = item['typeOperation']?.toString().toLowerCase() ?? 'inconnu';
     final isRevenu = type == 'revenu';
     final color = isRevenu ? Colors.green.shade600 : Colors.red.shade600;
 
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+      margin: EdgeInsets.symmetric(
+        horizontal: isSmallScreen ? 16 : 20,
+        vertical: isSmallScreen ? 5 : 6,
+      ),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: Colors.grey.shade100),
       ),
       child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 8),
+        contentPadding: EdgeInsets.symmetric(
+          horizontal: isSmallScreen ? 12 : 15,
+          vertical: isSmallScreen ? 6 : 8,
+        ),
         leading: Container(
-          padding: const EdgeInsets.all(10),
+          padding: EdgeInsets.all(isSmallScreen ? 8 : 10),
           decoration: BoxDecoration(
             color: color.withOpacity(0.1),
             borderRadius: BorderRadius.circular(12),
@@ -233,27 +261,30 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
           child: Icon(
             isRevenu ? Icons.arrow_downward : Icons.arrow_upward,
             color: color,
-            size: 20,
+            size: isSmallScreen ? 18 : 20,
           ),
         ),
         title: Text(
           item['details'] ?? 'Opération sans nom',
-          style: const TextStyle(
+          style: TextStyle(
             fontWeight: FontWeight.bold,
-            fontSize: 14,
-            color: Color(0xFF1E293B),
+            fontSize: isSmallScreen ? 13 : 15,
+            color: const Color(0xFF1E293B),
           ),
         ),
         subtitle: Text(
           item['dateOperation'] ?? '',
-          style: TextStyle(color: Colors.grey.shade500, fontSize: 11),
+          style: TextStyle(
+            color: Colors.grey.shade500,
+            fontSize: isSmallScreen ? 10 : 12,
+          ),
         ),
         trailing: Text(
           "${isRevenu ? '+' : '-'} ${item['montant']} Ar",
           style: TextStyle(
             color: color,
             fontWeight: FontWeight.bold,
-            fontSize: 15,
+            fontSize: isSmallScreen ? 13 : 16,
           ),
         ),
       ),
@@ -262,30 +293,36 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final screenSize = MediaQuery.of(context).size;
+    final isSmallScreen = screenSize.width < 600;
+
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFF),
       body: Column(
         children: [
-          _buildHeaderStats(),
-          _buildFilterBar(),
-          // 🔥 Section "Total Opérations" ajoutée ici
+          _buildHeaderStats(isSmallScreen),
+          _buildFilterBar(isSmallScreen),
+          
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 5),
+            padding: EdgeInsets.symmetric(
+              horizontal: isSmallScreen ? 20 : 25,
+              vertical: isSmallScreen ? 4 : 5,
+            ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
+                Text(
                   "Historique",
                   style: TextStyle(
-                    fontSize: 18,
+                    fontSize: isSmallScreen ? 16 : 19,
                     fontWeight: FontWeight.bold,
-                    color: Color(0xFF1E293B),
+                    color: const Color(0xFF1E293B),
                   ),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 4,
+                  padding: EdgeInsets.symmetric(
+                    horizontal: isSmallScreen ? 8 : 10,
+                    vertical: isSmallScreen ? 3 : 4,
                   ),
                   decoration: BoxDecoration(
                     color: Colors.blue.shade50,
@@ -296,35 +333,42 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
                     style: TextStyle(
                       color: const Color(0xFF0163D2),
                       fontWeight: FontWeight.bold,
-                      fontSize: 12,
+                      fontSize: isSmallScreen ? 11 : 13,
                     ),
                   ),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 10),
+          SizedBox(height: isSmallScreen ? 8 : 10),
+          
           Expanded(
             child: isLoading
                 ? const Center(child: CircularProgressIndicator())
                 : _filteredHistorique.isEmpty
-                ? _buildEmptyState()
-                : RefreshIndicator(
-                    onRefresh: loadHistorique,
-                    child: ListView.builder(
-                      padding: const EdgeInsets.only(top: 0, bottom: 20),
-                      itemCount: _filteredHistorique.length,
-                      itemBuilder: (context, index) =>
-                          _buildTransactionItem(_filteredHistorique[index]),
-                    ),
-                  ),
+                    ? _buildEmptyState(isSmallScreen)
+                    : RefreshIndicator(
+                        onRefresh: loadHistorique,
+                        child: ListView.builder(
+                          padding: EdgeInsets.only(
+                            top: 0,
+                            bottom: isSmallScreen ? 16 : 20,
+                          ),
+                          itemCount: _filteredHistorique.length,
+                          itemBuilder: (context, index) =>
+                              _buildTransactionItem(
+                            _filteredHistorique[index],
+                            isSmallScreen,
+                          ),
+                        ),
+                      ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildEmptyState() {
+  Widget _buildEmptyState(bool isSmallScreen) {
     return SingleChildScrollView(
       physics: const AlwaysScrollableScrollPhysics(),
       child: Container(
@@ -335,13 +379,16 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
           children: [
             Icon(
               Icons.history_toggle_off,
-              size: 70,
+              size: isSmallScreen ? 60 : 70,
               color: Colors.grey.shade300,
             ),
-            const SizedBox(height: 15),
+            SizedBox(height: isSmallScreen ? 12 : 15),
             Text(
               "Aucune donnée disponible",
-              style: TextStyle(color: Colors.grey.shade400, fontSize: 16),
+              style: TextStyle(
+                color: Colors.grey.shade400,
+                fontSize: isSmallScreen ? 14 : 16,
+              ),
             ),
           ],
         ),
